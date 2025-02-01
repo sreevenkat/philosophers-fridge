@@ -5,14 +5,14 @@ from sqlalchemy.orm import Session
 from models import User, FoodLog
 from database import SessionLocal
 import config
-import openai
+from openai import OpenAI
 import anthropic
 import os
 from dotenv import load_dotenv
-
 load_dotenv()
-openai.api_key = os.getenv('OPENAI_API_KEY')
-anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+
+client = OpenAI()
+anthropic_client = anthropic.Client(api_key=os.getenv('ANTHROPIC_API_KEY'))
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -70,32 +70,64 @@ async def get_calorie_count(food_name, portion_size):
         return 0.0  # Default value or handle error
 
 async def get_calories_from_openai(food_name, portion_size):
-    prompt = f"Estimate the total calories in {portion_size} of {food_name}. Provide only the numerical value."
-    response = openai.Completion.create(
-        engine='text-davinci-003',
-        prompt=prompt,
-        max_tokens=5,
-        temperature=0.0,
+    prompt = f"Estimate the total calories in {portion_size} of {food_name}. Respond with only a number, no words or units."
+    print(f"OpenAI Prompt: {prompt}")
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=50,
+        temperature=0.0
     )
-    calorie_text = response.choices[0].text.strip()
+    calorie_text = response.choices[0].message.content.strip()
+    print(f"OpenAI Response: {calorie_text}")
     try:
-        calorie_count = float(calorie_text)
+        # Remove any non-numeric characters except decimal points
+        cleaned_text = ''.join(c for c in calorie_text if c.isdigit() or c == '.')
+        calorie_count = float(cleaned_text)
+        print(f"Parsed calories: {calorie_count}")
     except ValueError:
+        print(f"Failed to parse response as number: {calorie_text}")
         calorie_count = 0.0
     return calorie_count
 
 async def get_calories_from_anthropic(food_name, portion_size):
-    client = anthropic.Client(api_key=anthropic_api_key)
-    prompt = f"Estimate the total calories in {portion_size} of {food_name}. Provide only the numerical value."
-    response = await client.completion(
-        prompt=anthropic.HUMAN_PROMPT + prompt + anthropic.AI_PROMPT,
-        stop_sequences=[anthropic.HUMAN_PROMPT],
-        max_tokens_to_sample=5,
-        temperature=0.0,
+    prompt = f"Estimate the total calories in {portion_size} of {food_name}. Respond with only a number, no words or units."
+    print(f"Anthropic Prompt: {prompt}")
+    response = await anthropic_client.messages.create(
+        model="claude-2",
+        max_tokens=50,
+        temperature=0,
+        messages=[{"role": "user", "content": prompt}]
     )
-    calorie_text = response['completion'].strip()
+    calorie_text = response.content[0].text.strip()
+    print(f"Anthropic Response: {calorie_text}")
     try:
-        calorie_count = float(calorie_text)
+        # Remove any non-numeric characters except decimal points
+        cleaned_text = ''.join(c for c in calorie_text if c.isdigit() or c == '.')
+        calorie_count = float(cleaned_text)
+        print(f"Parsed calories: {calorie_count}")
     except ValueError:
+        print(f"Failed to parse response as number: {calorie_text}")
         calorie_count = 0.0
     return calorie_count
+
+@app.get('/view_logs', response_class=HTMLResponse)
+async def view_logs(request: Request, db: Session = Depends(get_db)):
+    # Get all food logs with user information
+    logs = db.query(FoodLog, User).join(User).all()
+    
+    # Format the data for display
+    formatted_logs = []
+    for log, user in logs:
+        formatted_logs.append({
+            'user_name': user.name,
+            'food_name': log.food_name,
+            'portion_size': log.portion_size,
+            'calorie_count': log.calorie_count,
+            'timestamp': log.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        })
+    
+    return templates.TemplateResponse(
+        "view_logs.html", 
+        {"request": request, "logs": formatted_logs}
+    )

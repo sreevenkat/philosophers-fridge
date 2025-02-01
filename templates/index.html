@@ -8,6 +8,11 @@
     {% if message %}
         <p>{{ message }}</p>
     {% endif %}
+    <div style="text-align: right; margin-bottom: 20px;">
+        <a href="/view_logs" style="text-decoration: none;">
+            <button type="button">View Food Logs</button>
+        </a>
+    </div>
     <form action="/add_food" method="post">
         <label for="user_name">Your Name:</label><br>
         <input type="text" id="user_name" name="user_name" required><br>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Food Log Records</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Food Log Records</h1>
+            <a href="/" style="text-decoration: none;">
+                <button style="padding: 10px 20px;">Back to Form</button>
+            </a>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>User Name</th>
+                    <th>Food Name</th>
+                    <th>Portion Size</th>
+                    <th>Calories</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.user_name }}</td>
+                    <td>{{ log.food_name }}</td>
+                    <td>{{ log.portion_size }}</td>
+                    <td>{{ log.calorie_count }}</td>
+                    <td>{{ log.timestamp }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
