@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+jinja2
+sqlalchemy
+python-dotenv
+passlib[bcrypt]
+python-multipart
+openai
+anthropic

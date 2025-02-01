@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Philosophers Fridge</title>
+</head>
+<body>
+    <h1>Philosophers Fridge</h1>
+    {% if message %}
+        <p>{{ message }}</p>
+    {% endif %}
+    <form action="/add_food" method="post">
+        <label for="user_name">Your Name:</label><br>
+        <input type="text" id="user_name" name="user_name" required><br>
+        <label for="food_name">Food Name:</label><br>
+        <input type="text" id="food_name" name="food_name" required><br>
+        <label for="portion_size">Portion Size:</label><br>
+        <input type="text" id="portion_size" name="portion_size" required><br><br>
+        <input type="submit" value="Submit">
+    </form>
+</body>
+</html>
