@@ -2,65 +2,73 @@
 <html>
 <head>
     <title>Food Log Records</title>
-    <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-        tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-    </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <script defer src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"></script>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Food Log Records</h1>
-            <a href="/" style="text-decoration: none;">
-                <button style="padding: 10px 20px;">Back to Form</button>
+    <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="/">
+                <span class="icon">
+                    <i class="fas fa-utensils"></i>
+                </span>
+                <span class="has-text-weight-bold">Philosophers Fridge</span>
             </a>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>User Name</th>
-                    <th>Food Name</th>
-                    <th>Portion Size</th>
-                    <th>Calories</th>
-                    <th>Timestamp</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                <tr>
-                    <td>{{ log.user_name }}</td>
-                    <td>{{ log.food_name }}</td>
-                    <td>{{ log.portion_size }}</td>
-                    <td>{{ log.calorie_count }}</td>
-                    <td>{{ log.timestamp }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    </nav>
+
+    <section class="section">
+        <div class="container">
+            <div class="box">
+                <div class="level">
+                    <div class="level-left">
+                        <div class="level-item">
+                            <h1 class="title">Food Log Records</h1>
+                        </div>
+                    </div>
+                    <div class="level-right">
+                        <div class="level-item">
+                            <a href="/" class="button is-primary">
+                                <span class="icon">
+                                    <i class="fas fa-home"></i>
+                                </span>
+                                <span>Back to Home</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="table is-striped is-fullwidth">
+                        <thead>
+                            <tr>
+                                <th>Household</th>
+                                <th>User Name</th>
+                                <th>Food Name</th>
+                                <th>Portion Size</th>
+                                <th>Calories</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in logs %}
+                            <tr>
+                                <td>{{ log.household_name }}</td>
+                                <td>{{ log.user_name }}</td>
+                                <td>{{ log.food_name }}</td>
+                                <td>{{ log.portion_size }}</td>
+                                <td>{{ log.calorie_count }}</td>
+                                <td>{{ log.timestamp }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
     </div>
 </body>
 </html>

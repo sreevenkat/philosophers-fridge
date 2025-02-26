@@ -2,25 +2,145 @@
 <html>
 <head>
     <title>Philosophers Fridge</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <script defer src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"></script>
 </head>
 <body>
-    <h1>Philosophers Fridge</h1>
-    {% if message %}
-        <p>{{ message }}</p>
-    {% endif %}
-    <div style="text-align: right; margin-bottom: 20px;">
-        <a href="/view_logs" style="text-decoration: none;">
-            <button type="button">View Food Logs</button>
-        </a>
-    </div>
-    <form action="/add_food" method="post">
-        <label for="user_name">Your Name:</label><br>
-        <input type="text" id="user_name" name="user_name" required><br>
-        <label for="food_name">Food Name:</label><br>
-        <input type="text" id="food_name" name="food_name" required><br>
-        <label for="portion_size">Portion Size:</label><br>
-        <input type="text" id="portion_size" name="portion_size" required><br><br>
-        <input type="submit" value="Submit">
-    </form>
+    <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="/">
+                <span class="icon">
+                    <i class="fas fa-utensils"></i>
+                </span>
+                <span class="has-text-weight-bold">Philosophers Fridge</span>
+            </a>
+        </div>
+        <div class="navbar-end">
+            <div class="navbar-item">
+                <div class="buttons">
+                    <a href="/view_logs" class="button is-light">
+                        <span class="icon">
+                            <i class="fas fa-list"></i>
+                        </span>
+                        <span>View Food Logs</span>
+                    </a>
+                    <a href="/manage_household" class="button is-light">
+                        <span class="icon">
+                            <i class="fas fa-home"></i>
+                        </span>
+                        <span>Manage Households</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <section class="section">
+        <div class="container">
+            {% if message %}
+                <div class="notification is-info">
+                    {{ message }}
+                </div>
+            {% endif %}
+            <div class="box">
+                <h2 class="title is-4">Quick Household Creation</h2>
+                <form action="/create_household" method="post">
+                    <div class="field has-addons">
+                        <div class="control is-expanded">
+                            <input class="input" type="text" name="household_name" placeholder="New household name" required>
+                        </div>
+                        <div class="control">
+                            <button type="submit" class="button is-primary">
+                                <span class="icon">
+                                    <i class="fas fa-plus"></i>
+                                </span>
+                                <span>Create Household</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="box">
+                <h2 class="title is-4">Add Food Entry</h2>
+                <form action="/add_food" method="post">
+                    <div class="field">
+                        <label class="label" for="household">Select Household</label>
+                        <div class="control">
+                            <div class="select is-fullwidth">
+                                <select id="household" name="household_id" required onchange="updateMembers(this.value)">
+                                    <option value="">Select a household...</option>
+                                    {% for household in households %}
+                                    <option value="{{ household.id }}">{{ household.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="user_name">Select Member</label>
+                        <div class="control">
+                            <div class="select is-fullwidth">
+                                <select id="user_name" name="user_id" required>
+                                    <option value="">Select a member...</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="food_name">Food Name</label>
+                        <div class="control">
+                            <input class="input" type="text" id="food_name" name="food_name" required>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="portion_size">Portion Size</label>
+                        <div class="control">
+                            <input class="input" type="text" id="portion_size" name="portion_size" required>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <div class="control">
+                            <button type="submit" class="button is-primary is-fullwidth">
+                                <span class="icon">
+                                    <i class="fas fa-plus"></i>
+                                </span>
+                                <span>Add Food Entry</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+    <script>
+        async function updateMembers(householdId) {
+            if (!householdId) {
+                document.getElementById('user_name').innerHTML = '<option value="">Select a member...</option>';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/get_household_members/${householdId}`);
+                const members = await response.json();
+                
+                let options = '<option value="">Select a member...</option>';
+                members.forEach(member => {
+                    options += `<option value="${member.id}">${member.name}</option>`;
+                });
+                
+                document.getElementById('user_name').innerHTML = options;
+            } catch (error) {
+                console.error('Error fetching members:', error);
+                document.getElementById('user_name').innerHTML = '<option value="">Error loading members</option>';
+            }
+        }
+    </script>
 </body>
 </html>

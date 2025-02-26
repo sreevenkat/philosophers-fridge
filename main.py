@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Request, Form, Depends
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Form, Depends, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from models import User, FoodLog
+from models import User, FoodLog, Household
 from database import SessionLocal
 import config
 from openai import OpenAI
@@ -25,24 +25,110 @@ def get_db():
         db.close()
 
 @app.get('/', response_class=HTMLResponse)
-async def read_form(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+async def read_form(request: Request, db: Session = Depends(get_db)):
+    # Create test household if it doesn't exist
+    test_household = db.query(Household).filter(Household.name == "test").first()
+    if not test_household:
+        test_household = Household(name="test")
+        db.add(test_household)
+        db.commit()
+        
+        # Move existing users without household to test household
+        orphan_users = db.query(User).filter(User.household_id == None).all()
+        for user in orphan_users:
+            user.household_id = test_household.id
+        db.commit()
+    
+    households = db.query(Household).all()
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "households": households
+    })
+
+@app.get('/manage_household', response_class=HTMLResponse)
+async def manage_household(request: Request, db: Session = Depends(get_db)):
+    households = db.query(Household).all()
+    return templates.TemplateResponse("household_form.html", {
+        "request": request,
+        "households": households
+    })
+
+@app.post('/create_household', response_class=HTMLResponse)
+async def create_household(
+    request: Request,
+    household_name: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Check if household already exists
+        existing_household = db.query(Household).filter(Household.name == household_name).first()
+        if existing_household:
+            households = db.query(Household).all()
+            return templates.TemplateResponse("index.html", {
+                "request": request,
+                "households": households,
+                "message": f"Household '{household_name}' already exists!"
+            })
+
+        # Create new household
+        household = Household(name=household_name)
+        db.add(household)
+        try:
+            db.commit()
+            db.refresh(household)
+        except Exception as db_error:
+            db.rollback()
+            print(f"Database error: {str(db_error)}")
+            raise HTTPException(status_code=500, detail="Database error occurred")
+
+        # Get updated list of households
+        households = db.query(Household).all()
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "households": households,
+            "message": f"Household '{household_name}' created successfully!"
+        })
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        households = db.query(Household).all()
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "households": households,
+            "message": "An unexpected error occurred while creating the household."
+        }, status_code=500)
+
+@app.post('/add_member', response_class=HTMLResponse)
+async def add_member(
+    request: Request,
+    household_id: int = Form(...),
+    member_name: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    user = User(name=member_name, household_id=household_id)
+    db.add(user)
+    db.commit()
+    return await manage_household(request, db)
+
+@app.get('/get_household_members/{household_id}')
+async def get_household_members(household_id: int, db: Session = Depends(get_db)):
+    members = db.query(User).filter(User.household_id == household_id).all()
+    return JSONResponse(content=[{"id": m.id, "name": m.name} for m in members])
 
 @app.post('/add_food', response_class=HTMLResponse)
 async def add_food(
     request: Request,
-    user_name: str = Form(...),
+    household_id: int = Form(...),
+    user_id: int = Form(...),
     food_name: str = Form(...),
     portion_size: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    # Check if user exists; if not, create them
-    user = db.query(User).filter(User.name == user_name).first()
+    # Get user
+    user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        user = User(name=user_name)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        raise HTTPException(status_code=404, detail="User not found")
 
     # Get calorie count from preferred AI
     calorie_count = await get_calorie_count(food_name, portion_size)
@@ -113,13 +199,18 @@ async def get_calories_from_anthropic(food_name, portion_size):
 
 @app.get('/view_logs', response_class=HTMLResponse)
 async def view_logs(request: Request, db: Session = Depends(get_db)):
-    # Get all food logs with user information
-    logs = db.query(FoodLog, User).join(User).all()
+    # Get all food logs with user and household information
+    logs = db.query(FoodLog, User, Household)\
+        .select_from(FoodLog)\
+        .join(User, FoodLog.user_id == User.id)\
+        .join(Household, User.household_id == Household.id)\
+        .all()
     
     # Format the data for display
     formatted_logs = []
-    for log, user in logs:
+    for log, user, household in logs:
         formatted_logs.append({
+            'household_name': household.name,
             'user_name': user.name,
             'food_name': log.food_name,
             'portion_size': log.portion_size,
