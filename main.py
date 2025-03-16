@@ -188,6 +188,8 @@ async def add_self_to_household(
     db: Session = Depends(get_db)
 ):
     try:
+        user_id = current_user.id  # Store the user ID for later retrieval
+        
         # Check if user is already in a household
         if current_user.household_id:
             return templates.TemplateResponse("error.html", {
@@ -208,30 +210,33 @@ async def add_self_to_household(
         # Update user's household
         current_user.household_id = household_id
         db.commit()
-        db.refresh(current_user)
+        
+        # Get the updated user from the database
+        updated_user = db.query(User).filter(User.id == user_id).first()
         
         # Get updated list of households for the redirect
-        if is_admin(current_user):
+        if is_admin(updated_user):
             households = db.query(Household).all()
         else:
-            households = [current_user.household]
+            households = [updated_user.household]
         
         # Get pending invitations for this user
         pending_invitations = []
-        if current_user.email:
+        if updated_user.email:
             pending_invitations = db.query(HouseholdInvitation).join(Household).filter(
-                HouseholdInvitation.email == current_user.email,
+                HouseholdInvitation.email == updated_user.email,
                 HouseholdInvitation.status == InvitationStatus.PENDING
             ).all()
         
         return templates.TemplateResponse("index.html", {
             "request": request,
-            "user": current_user,
+            "user": updated_user,
             "households": households,
             "pending_invitations": pending_invitations,
             "message": f"You have successfully joined the household: {household.name}"
         })
     except Exception as e:
+        db.rollback()  # Roll back the transaction in case of error
         return templates.TemplateResponse("error.html", {
             "request": request,
             "user": current_user,
