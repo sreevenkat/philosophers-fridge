@@ -5,6 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
     <script defer src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"></script>
 </head>
 <body>
@@ -17,21 +18,33 @@
                 <span class="has-text-weight-bold">Philosophers Fridge</span>
             </a>
         </div>
-        <div class="navbar-end">
-            <div class="navbar-item">
-                <div class="buttons">
-                    <a href="/view_logs" class="button is-light">
-                        <span class="icon">
-                            <i class="fas fa-list"></i>
-                        </span>
-                        <span>View Food Logs</span>
-                    </a>
-                    <a href="/manage_household" class="button is-light">
-                        <span class="icon">
-                            <i class="fas fa-home"></i>
-                        </span>
-                        <span>Manage Households</span>
-                    </a>
+        
+        <div class="navbar-menu">
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <div class="buttons">
+                        {% if user %}
+                            <div class="navbar-item">
+                                <span>Welcome, {{ user.name }}</span>
+                                {% if is_admin(user) %}
+                                    <span class="tag is-danger ml-2">Admin</span>
+                                {% endif %}
+                            </div>
+                            <a href="/logout" class="button is-light">
+                                <span class="icon">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                </span>
+                                <span>Logout</span>
+                            </a>
+                        {% else %}
+                            <a href="/login" class="button is-light">
+                                <span class="icon">
+                                    <i class="fas fa-sign-in-alt"></i>
+                                </span>
+                                <span>Login</span>
+                            </a>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -40,107 +53,210 @@
     <section class="section">
         <div class="container">
             {% if message %}
-                <div class="notification is-info">
-                    {{ message }}
-                </div>
-            {% endif %}
-            <div class="box">
-                <h2 class="title is-4">Quick Household Creation</h2>
-                <form action="/create_household" method="post">
-                    <div class="field has-addons">
-                        <div class="control is-expanded">
-                            <input class="input" type="text" name="household_name" placeholder="New household name" required>
-                        </div>
-                        <div class="control">
-                            <button type="submit" class="button is-primary">
-                                <span class="icon">
-                                    <i class="fas fa-plus"></i>
-                                </span>
-                                <span>Create Household</span>
-                            </button>
-                        </div>
-                    </div>
-                </form>
+            <div class="notification is-success">
+                {{ message }}
             </div>
-
-            <div class="box">
-                <h2 class="title is-4">Add Food Entry</h2>
-                <form action="/add_food" method="post">
-                    <div class="field">
-                        <label class="label" for="household">Select Household</label>
-                        <div class="control">
-                            <div class="select is-fullwidth">
-                                <select id="household" name="household_id" required onchange="updateMembers(this.value)">
-                                    <option value="">Select a household...</option>
-                                    {% for household in households %}
-                                    <option value="{{ household.id }}">{{ household.name }}</option>
-                                    {% endfor %}
-                                </select>
+            {% endif %}
+            
+            <div class="columns">
+                <div class="column is-8">
+                    <div class="box">
+                        <h1 class="title">Welcome to Philosophers Fridge</h1>
+                        <p class="subtitle">Track your food consumption and estimate calories</p>
+                        
+                        {% if not user.household %}
+                        <div class="notification is-warning">
+                            <p>You are not currently in a household. Please join a household to start logging food.</p>
+                            
+                            {% if households %}
+                            <div class="mt-4">
+                                <h3 class="title is-5">Join a Household</h3>
+                                <form action="/add_self_to_household" method="post">
+                                    <div class="field">
+                                        <label class="label">Select a household to join:</label>
+                                        <div class="control">
+                                            <div class="select is-fullwidth">
+                                                <select name="household_id" required>
+                                                    <option value="">Select a household</option>
+                                                    {% for household in households %}
+                                                    <option value="{{ household.id }}">{{ household.name }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="field">
+                                        <div class="control">
+                                            <button type="submit" class="button is-primary is-fullwidth">
+                                                <span class="icon">
+                                                    <i class="fas fa-home"></i>
+                                                </span>
+                                                <span>Join Selected Household</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="field">
-                        <label class="label" for="user_name">Select Member</label>
-                        <div class="control">
-                            <div class="select is-fullwidth">
-                                <select id="user_name" name="user_id" required>
-                                    <option value="">Select a member...</option>
-                                </select>
+                            {% endif %}
+                            
+                            {% if pending_invitations %}
+                            <div class="box mt-4">
+                                <h3 class="title is-5">Household Invitations</h3>
+                                <table class="table is-fullwidth">
+                                    <thead>
+                                        <tr>
+                                            <th>Household</th>
+                                            <th>Sent</th>
+                                            <th>Expires</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for invitation in pending_invitations %}
+                                        <tr>
+                                            <td>{{ invitation.household.name }}</td>
+                                            <td>{{ invitation.created_at.strftime("%Y-%m-%d") }}</td>
+                                            <td>{{ invitation.expires_at.strftime("%Y-%m-%d") }}</td>
+                                            <td>
+                                                <div class="buttons are-small">
+                                                    <form action="/accept_invitation" method="post" class="is-inline">
+                                                        <input type="hidden" name="invitation_id" value="{{ invitation.id }}">
+                                                        <button type="submit" class="button is-success">
+                                                            <span class="icon is-small">
+                                                                <i class="fas fa-check"></i>
+                                                            </span>
+                                                            <span>Accept</span>
+                                                        </button>
+                                                    </form>
+                                                    <form action="/reject_invitation" method="post" class="is-inline">
+                                                        <input type="hidden" name="invitation_id" value="{{ invitation.id }}">
+                                                        <button type="submit" class="button is-danger">
+                                                            <span class="icon is-small">
+                                                                <i class="fas fa-times"></i>
+                                                            </span>
+                                                            <span>Reject</span>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
                             </div>
+                            {% else %}
+                            <p class="mt-4">Or wait for an invitation from a household admin.</p>
+                            {% endif %}
                         </div>
-                    </div>
-
-                    <div class="field">
-                        <label class="label" for="food_name">Food Name</label>
-                        <div class="control">
-                            <input class="input" type="text" id="food_name" name="food_name" required>
+                        {% endif %}
+                        
+                        {% if user.household %}
+                        <div class="box">
+                            <h3 class="title is-4">Add Food Log</h3>
+                            <form action="/add_food" method="post">
+                                <input type="hidden" name="household_id" value="{{ user.household.id }}">
+                                
+                                {% if is_admin(user) %}
+                                <div class="field">
+                                    <label class="label">User</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select name="user_id" id="user_id" required>
+                                                <option value="{{ user.id }}">{{ user.name }} (You)</option>
+                                                {% for member in user.household.members %}
+                                                    {% if member.id != user.id %}
+                                                    <option value="{{ member.id }}">{{ member.name }}</option>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <input type="hidden" name="user_id" value="{{ user.id }}">
+                                {% endif %}
+                                
+                                <div class="field">
+                                    <label class="label">Food Name</label>
+                                    <div class="control">
+                                        <input class="input" type="text" name="food_name" placeholder="e.g., Grilled Chicken Breast" required>
+                                    </div>
+                                </div>
+                                
+                                <div class="field">
+                                    <label class="label">Portion Size</label>
+                                    <div class="control">
+                                        <input class="input" type="text" name="portion_size" placeholder="e.g., 6 oz" required>
+                                    </div>
+                                </div>
+                                
+                                <div class="field">
+                                    <div class="control">
+                                        <button class="button is-primary" type="submit">Add Food Log</button>
+                                    </div>
+                                </div>
+                            </form>
                         </div>
+                        {% endif %}
                     </div>
-
-                    <div class="field">
-                        <label class="label" for="portion_size">Portion Size</label>
-                        <div class="control">
-                            <input class="input" type="text" id="portion_size" name="portion_size" required>
-                        </div>
-                    </div>
-
-                    <div class="field">
-                        <div class="control">
-                            <button type="submit" class="button is-primary is-fullwidth">
+                </div>
+                
+                <div class="column is-4">
+                    <div class="box">
+                        <h3 class="title is-4">Quick Links</h3>
+                        <div class="buttons">
+                            <a href="/view_logs" class="button is-info is-fullwidth">
                                 <span class="icon">
-                                    <i class="fas fa-plus"></i>
+                                    <i class="fas fa-list"></i>
                                 </span>
-                                <span>Add Food Entry</span>
-                            </button>
+                                <span>View Food Logs</span>
+                            </a>
+                            
+                            {% if is_admin(user) %}
+                            <a href="/manage_household" class="button is-primary is-fullwidth">
+                                <span class="icon">
+                                    <i class="fas fa-home"></i>
+                                </span>
+                                <span>Manage Households</span>
+                            </a>
+                            
+                            <a href="/manage_users" class="button is-warning is-fullwidth">
+                                <span class="icon">
+                                    <i class="fas fa-users"></i>
+                                </span>
+                                <span>Manage Users</span>
+                            </a>
+                            {% endif %}
                         </div>
                     </div>
-                </form>
+                    
+                    {% if user.household %}
+                    <div class="box">
+                        <h3 class="title is-5">Your Household</h3>
+                        <p><strong>Name:</strong> {{ user.household.name }}</p>
+                        <p><strong>Members:</strong> {{ user.household.members|length }}</p>
+                        
+                        <form action="/leave_household" method="post" class="mt-4">
+                            <button type="submit" class="button is-danger is-small">
+                                <span class="icon is-small">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                </span>
+                                <span>Leave Household</span>
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </section>
-    <script>
-        async function updateMembers(householdId) {
-            if (!householdId) {
-                document.getElementById('user_name').innerHTML = '<option value="">Select a member...</option>';
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/get_household_members/${householdId}`);
-                const members = await response.json();
-                
-                let options = '<option value="">Select a member...</option>';
-                members.forEach(member => {
-                    options += `<option value="${member.id}">${member.name}</option>`;
-                });
-                
-                document.getElementById('user_name').innerHTML = options;
-            } catch (error) {
-                console.error('Error fetching members:', error);
-                document.getElementById('user_name').innerHTML = '<option value="">Error loading members</option>';
-            }
-        }
-    </script>
+    
+    <footer class="footer">
+        <div class="content has-text-centered">
+            <p>
+                <strong>Philosophers Fridge</strong> - A thoughtful meal planning and nutrition tracking application.
+            </p>
+        </div>
+    </footer>
 </body>
 </html>
