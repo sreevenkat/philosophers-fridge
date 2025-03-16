@@ -7,6 +7,11 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
     <script defer src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"></script>
+    <style>
+        .has-border-bottom {
+            border-bottom: 1px solid #dbdbdb;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
@@ -64,9 +69,9 @@
                         <h1 class="title">Welcome to Philosophers Fridge</h1>
                         <p class="subtitle">Track your food consumption and estimate calories</p>
                         
-                        {% if not user.household_id %}
+                        {% if not user.households %}
                         <div class="notification is-warning">
-                            <p>You are not currently in a household. Please join a household to start logging food.</p>
+                            <p>You are not currently in any household. Please join a household to start logging food.</p>
                             
                             {% if households %}
                             <div class="mt-4">
@@ -84,6 +89,12 @@
                                                 </select>
                                             </div>
                                         </div>
+                                    </div>
+                                    <div class="field">
+                                        <label class="checkbox">
+                                            <input type="checkbox" name="set_as_primary" checked>
+                                            Set as primary household
+                                        </label>
                                     </div>
                                     <div class="field">
                                         <div class="control">
@@ -150,11 +161,24 @@
                         </div>
                         {% endif %}
                         
-                        {% if user.household_id %}
+                        {% if user.households %}
                         <div class="box">
                             <h3 class="title is-4">Add Food Log</h3>
                             <form action="/add_food" method="post">
-                                <input type="hidden" name="household_id" value="{{ user.household.id }}">
+                                <div class="field">
+                                    <label class="label">Household</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select name="household_id" required>
+                                                {% for household in user.households %}
+                                                <option value="{{ household.id }}" {% if primary_household and household.id == primary_household.id %}selected{% endif %}>
+                                                    {{ household.name }}{% if primary_household and household.id == primary_household.id %} (Primary){% endif %}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
                                 
                                 {% if is_admin(user) %}
                                 <div class="field">
@@ -230,20 +254,44 @@
                         </div>
                     </div>
                     
-                    {% if user.household %}
+                    {% if user.households %}
                     <div class="box">
-                        <h3 class="title is-5">Your Household</h3>
-                        <p><strong>Name:</strong> {{ user.household.name }}</p>
-                        <p><strong>Members:</strong> {{ user.household.members|length }}</p>
-                        
-                        <form action="/leave_household" method="post" class="mt-4">
-                            <button type="submit" class="button is-danger is-small">
-                                <span class="icon is-small">
-                                    <i class="fas fa-sign-out-alt"></i>
-                                </span>
-                                <span>Leave Household</span>
-                            </button>
-                        </form>
+                        <h3 class="title is-5">Your Households</h3>
+                        {% for household in user.households %}
+                        <div class="mb-4 pb-4 {% if not loop.last %}has-border-bottom{% endif %}">
+                            <p>
+                                <strong>Name:</strong> {{ household.name }}
+                                {% if primary_household and household.id == primary_household.id %}
+                                <span class="tag is-success is-light">Primary</span>
+                                {% endif %}
+                            </p>
+                            <p><strong>Members:</strong> {{ household.members|length }}</p>
+                            
+                            <div class="buttons are-small mt-2">
+                                <form action="/leave_household" method="post" class="is-inline">
+                                    <input type="hidden" name="household_id" value="{{ household.id }}">
+                                    <button type="submit" class="button is-danger is-small">
+                                        <span class="icon is-small">
+                                            <i class="fas fa-sign-out-alt"></i>
+                                        </span>
+                                        <span>Leave</span>
+                                    </button>
+                                </form>
+                                
+                                {% if not primary_household or household.id != primary_household.id %}
+                                <form action="/set_primary_household" method="post" class="is-inline">
+                                    <input type="hidden" name="household_id" value="{{ household.id }}">
+                                    <button type="submit" class="button is-info is-small">
+                                        <span class="icon is-small">
+                                            <i class="fas fa-star"></i>
+                                        </span>
+                                        <span>Set as Primary</span>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
                     </div>
                     {% endif %}
                 </div>

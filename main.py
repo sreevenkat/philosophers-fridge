@@ -75,10 +75,7 @@ async def read_form(request: Request, db: Session = Depends(get_db)):
     if is_admin(user):
         households = db.query(Household).all()
     else:
-        if user.household_id:
-            households = [user.household]
-        else:
-            households = []
+        households = user.households
     
     # Get pending invitations for this user
     pending_invitations = []
@@ -87,6 +84,9 @@ async def read_form(request: Request, db: Session = Depends(get_db)):
             HouseholdInvitation.email == user.email,
             HouseholdInvitation.status == InvitationStatus.PENDING
         ).all()
+    
+    # Get the user's primary household
+    primary_household = user.get_primary_household()
     
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -174,8 +174,17 @@ async def add_member(
     if not user_to_add:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Update user's household
-    user_to_add.household_id = household_id
+    # Check if user is already in this household
+    if household_id in [h.id for h in user_to_add.households]:
+        raise HTTPException(status_code=400, detail="User is already in this household")
+    
+    # Add user to household
+    association = UserHouseholdAssociation(
+        user_id=user_to_add.id,
+        household_id=household_id,
+        is_primary=len(user_to_add.households) == 0  # Set as primary if it's the first household
+    )
+    db.add(association)
     db.commit()
     
     return await manage_household(request, db)
@@ -184,19 +193,13 @@ async def add_member(
 async def add_self_to_household(
     request: Request,
     household_id: int = Form(...),
+    set_as_primary: bool = Form(False, alias="set_as_primary"),
     auth_user: User = Depends(require_user),
     db: Session = Depends(get_db)
 ):
     try:
         user_id = auth_user.id  # Store the user ID for later retrieval
         current_user = db.query(User).get(user_id)  
-        # Check if user is already in a household
-        if current_user.household_id:
-            return templates.TemplateResponse("error.html", {
-                "request": request,
-                "user": current_user,
-                "error_message": "You are already in a household. You must leave your current household before joining a new one."
-            })
         
         # Check if household exists
         household = db.query(Household).filter(Household.id == household_id).first()
@@ -207,15 +210,34 @@ async def add_self_to_household(
                 "error_message": "The selected household does not exist."
             })
         
-        # Update user's household
-        current_user.household_id = household_id
+        # Check if user is already in this household
+        if household in current_user.households:
+            return templates.TemplateResponse("error.html", {
+                "request": request,
+                "user": current_user,
+                "error_message": "You are already a member of this household."
+            })
+        
+        # Add user to the household
+        association = UserHouseholdAssociation(
+            user_id=current_user.id,
+            household_id=household_id,
+            is_primary=set_as_primary or len(current_user.households) == 0  # Set as primary if requested or if it's the first household
+        )
+        
+        # If this is set as primary, unset any existing primary
+        if set_as_primary:
+            existing_primary = db.query(UserHouseholdAssociation).filter(
+                UserHouseholdAssociation.user_id == current_user.id,
+                UserHouseholdAssociation.is_primary == True
+            ).first()
+            
+            if existing_primary:
+                existing_primary.is_primary = False
+        
+        db.add(association)
         db.commit()
         db.refresh(current_user)  # Refresh the current_user object with updated data
-        # Get updated list of households for the redirect
-        if is_admin(current_user):
-            households = db.query(Household).all()
-        else:
-            households = [current_user.household]
         
         # Get pending invitations for this user
         pending_invitations = []
@@ -392,11 +414,57 @@ async def join_household(
             "error_message": "This invitation was sent to a different email address"
         })
     
+    # Check if user is already in this household
+    if invitation.household in user.households:
+        # Mark invitation as accepted
+        invitation.status = InvitationStatus.ACCEPTED
+        db.commit()
+        return RedirectResponse(url='/', status_code=303)
+    
     # Add user to household
-    user.household_id = invitation.household_id
+    is_first_household = len(user.households) == 0
+    association = UserHouseholdAssociation(
+        user_id=user.id,
+        household_id=invitation.household_id,
+        is_primary=is_first_household  # Set as primary if it's the first household
+    )
+    db.add(association)
     
     # Mark invitation as accepted
     invitation.status = InvitationStatus.ACCEPTED
+    
+    db.commit()
+    
+    return RedirectResponse(url='/', status_code=303)
+
+@app.post('/set_primary_household', response_class=HTMLResponse)
+async def set_primary_household(
+    request: Request,
+    household_id: int = Form(...),
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    # Check if user is in the specified household
+    household = db.query(Household).filter(Household.id == household_id).first()
+    if not household or household not in current_user.households:
+        return templates.TemplateResponse("error.html", {
+            "request": request,
+            "user": current_user,
+            "error_message": "You are not a member of this household."
+        })
+    
+    # Update the associations
+    # First, unset any existing primary
+    db.query(UserHouseholdAssociation).filter(
+        UserHouseholdAssociation.user_id == current_user.id,
+        UserHouseholdAssociation.is_primary == True
+    ).update({"is_primary": False})
+    
+    # Then set the new primary
+    db.query(UserHouseholdAssociation).filter(
+        UserHouseholdAssociation.user_id == current_user.id,
+        UserHouseholdAssociation.household_id == household_id
+    ).update({"is_primary": True})
     
     db.commit()
     
@@ -431,18 +499,6 @@ async def accept_invitation(
                 "error_message": "This invitation was not sent to you."
             })
         
-        # Check if user is already in a household
-        if current_user.household_id:
-            # Mark invitation as rejected since user is already in a household
-            invitation.status = InvitationStatus.REJECTED
-            db.commit()
-            
-            return templates.TemplateResponse("error.html", {
-                "request": request,
-                "user": current_user,
-                "error_message": "You are already in a household. You must leave your current household before joining a new one."
-            })
-        
         # Check if household exists
         household = db.query(Household).filter(Household.id == invitation.household_id).first()
         if not household:
@@ -455,8 +511,25 @@ async def accept_invitation(
                 "error_message": "The household no longer exists."
             })
         
+        # Check if user is already in this household
+        if household in current_user.households:
+            invitation.status = InvitationStatus.ACCEPTED
+            db.commit()
+            
+            return templates.TemplateResponse("error.html", {
+                "request": request,
+                "user": current_user,
+                "error_message": "You are already a member of this household."
+            })
+        
         # Add user to household
-        current_user.household_id = invitation.household_id
+        is_first_household = len(current_user.households) == 0
+        association = UserHouseholdAssociation(
+            user_id=current_user.id,
+            household_id=invitation.household_id,
+            is_primary=is_first_household  # Set as primary if it's the first household
+        )
+        db.add(association)
         
         # Mark invitation as accepted
         invitation.status = InvitationStatus.ACCEPTED
@@ -504,41 +577,54 @@ async def reject_invitation(
 @app.post('/leave_household', response_class=HTMLResponse)
 async def leave_household(
     request: Request,
+    household_id: int = Form(...),
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db)
 ):
-    # Check if user is in a household
-    if not current_user.household_id:
+    # Check if user is in the specified household
+    household = db.query(Household).filter(Household.id == household_id).first()
+    if not household or household not in current_user.households:
         return templates.TemplateResponse("error.html", {
             "request": request,
             "user": current_user,
-            "error_message": "You are not currently in a household."
+            "error_message": "You are not a member of this household."
         })
     
     # Check if user is the only admin in the household
     if is_admin(current_user):
-        admin_count = db.query(User).filter(
-            User.household_id == current_user.household_id,
-            User.role == UserRole.ADMIN
-        ).count()
+        # Count admins in this household
+        admin_count = 0
+        for member in household.members:
+            if is_admin(member) and member.id != current_user.id:
+                admin_count += 1
         
-        if admin_count == 1:
-            # Count other members
-            member_count = db.query(User).filter(
-                User.household_id == current_user.household_id,
-                User.id != current_user.id
-            ).count()
-            
-            if member_count > 0:
-                return templates.TemplateResponse("error.html", {
-                    "request": request,
-                    "user": current_user,
-                    "error_message": "You cannot leave the household as you are the only admin. Please promote another member to admin first."
-                })
+        if admin_count == 0 and len(household.members) > 1:
+            return templates.TemplateResponse("error.html", {
+                "request": request,
+                "user": current_user,
+                "error_message": "You cannot leave the household as you are the only admin. Please promote another member to admin first."
+            })
     
-    # Remove user from household
-    current_user.household_id = None
-    db.commit()
+    # Remove the association
+    association = db.query(UserHouseholdAssociation).filter(
+        UserHouseholdAssociation.user_id == current_user.id,
+        UserHouseholdAssociation.household_id == household_id
+    ).first()
+    
+    if association:
+        was_primary = association.is_primary
+        db.delete(association)
+        
+        # If this was the primary household and user has other households, set a new primary
+        if was_primary:
+            other_association = db.query(UserHouseholdAssociation).filter(
+                UserHouseholdAssociation.user_id == current_user.id
+            ).first()
+            
+            if other_association:
+                other_association.is_primary = True
+        
+        db.commit()
     
     return RedirectResponse(url='/', status_code=303)
 
@@ -595,6 +681,7 @@ async def add_food(
     # Add food log entry
     food_log = FoodLog(
         user_id=user.id,
+        household_id=household_id,
         food_name=food_name,
         portion_size=portion_size,
         calorie_count=calorie_count
@@ -666,19 +753,22 @@ async def view_logs(
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db)
 ):
-    # For admins, get all logs; for regular users, get only their household's logs
+    # For admins, get all logs; for regular users, get only logs from their households
     if is_admin(current_user):
         logs = db.query(FoodLog, User, Household)\
             .select_from(FoodLog)\
             .join(User, FoodLog.user_id == User.id)\
-            .join(Household, User.household_id == Household.id)\
+            .join(Household, FoodLog.household_id == Household.id)\
             .all()
     else:
+        # Get IDs of all households the user belongs to
+        household_ids = [h.id for h in current_user.households]
+        
         logs = db.query(FoodLog, User, Household)\
             .select_from(FoodLog)\
             .join(User, FoodLog.user_id == User.id)\
-            .join(Household, User.household_id == Household.id)\
-            .filter(User.household_id == current_user.household_id)\
+            .join(Household, FoodLog.household_id == Household.id)\
+            .filter(FoodLog.household_id.in_(household_ids))\
             .all()
     
     # Format the data for display
