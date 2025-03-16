@@ -206,14 +206,14 @@ async def add_self_to_household(
                 "user": current_user,
                 "error_message": "The selected household does not exist."
             })
-        
+        print("household", household.__dict__)
         # Update user's household
         current_user.household_id = household_id
         db.commit()
         
         # Get the updated user from the database
         updated_user = db.query(User).filter(User.id == user_id).first()
-        
+        print("updated_user", user_id, updated_user.__dict__)
         # Get updated list of households for the redirect
         if is_admin(updated_user):
             households = db.query(Household).all()
