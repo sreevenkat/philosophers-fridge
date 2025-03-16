@@ -13,6 +13,15 @@ class UserRole(enum.Enum):
     ADMIN = "admin"
     MEMBER = "member"
 
+# Association table for many-to-many relationship between User and Household
+user_household_association = Table(
+    'user_household_association',
+    Base.metadata,
+    Column('user_id', Integer, ForeignKey('users.id')),
+    Column('household_id', Integer, ForeignKey('households.id')),
+    Column('is_primary', Boolean, default=False)  # To mark a primary household
+)
+
 class Household(Base):
     __tablename__ = 'households'
     id = Column(Integer, primary_key=True)
@@ -20,7 +29,7 @@ class Household(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     # Relationships
-    members = relationship('User', back_populates='household')
+    members = relationship('User', secondary=user_household_association, back_populates='households')
     invitations = relationship('HouseholdInvitation', back_populates='household')
 
 class User(Base):
@@ -31,7 +40,6 @@ class User(Base):
     google_id = Column(String, unique=True)
     picture = Column(String, nullable=True)
     role = Column(Enum(UserRole), default=UserRole.MEMBER)
-    household_id = Column(Integer, ForeignKey('households.id'), nullable=True)
     
     # Nutritional preferences and goals
     daily_calorie_goal = Column(Integer, nullable=True)
@@ -42,8 +50,27 @@ class User(Base):
     additional_preferences = Column(String, nullable=True)
 
     # Relationships
-    household = relationship('Household', back_populates='members')
+    household_associations = relationship('UserHouseholdAssociation', back_populates='user')
+    households = relationship('Household', secondary=user_household_association, back_populates='members')
     food_logs = relationship('FoodLog', back_populates='user')
+    
+    def get_primary_household(self):
+        """Get the user's primary household if set"""
+        for assoc in self.household_associations:
+            if assoc.is_primary:
+                return assoc.household
+        # If no primary is set but user has households, return the first one
+        return self.households[0] if self.households else None
+
+class UserHouseholdAssociation(Base):
+    __tablename__ = 'user_household_association'
+    user_id = Column(Integer, ForeignKey('users.id'), primary_key=True)
+    household_id = Column(Integer, ForeignKey('households.id'), primary_key=True)
+    is_primary = Column(Boolean, default=False)
+    joined_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    user = relationship('User', back_populates='household_associations')
+    household = relationship('Household')
 
 class InvitationStatus(enum.Enum):
     PENDING = "pending"
@@ -73,3 +100,7 @@ class FoodLog(Base):
 
     user_id = Column(Integer, ForeignKey('users.id'))
     user = relationship('User', back_populates='food_logs')
+    
+    # Add household_id to track which household this food log belongs to
+    household_id = Column(Integer, ForeignKey('households.id'))
+    household = relationship('Household')
