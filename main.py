@@ -206,31 +206,29 @@ async def add_self_to_household(
                 "user": current_user,
                 "error_message": "The selected household does not exist."
             })
-        print("household", household.__dict__)
+        
         # Update user's household
         current_user.household_id = household_id
         db.commit()
+        db.refresh(current_user)  # Refresh the current_user object with updated data
         
-        # Get the updated user from the database
-        updated_user = db.query(User).filter(User.id == user_id).first()
-        print("updated_user", user_id, updated_user.__dict__)
         # Get updated list of households for the redirect
-        if is_admin(updated_user):
+        if is_admin(current_user):
             households = db.query(Household).all()
         else:
-            households = [updated_user.household]
+            households = [current_user.household]
         
         # Get pending invitations for this user
         pending_invitations = []
-        if updated_user.email:
+        if current_user.email:
             pending_invitations = db.query(HouseholdInvitation).join(Household).filter(
-                HouseholdInvitation.email == updated_user.email,
+                HouseholdInvitation.email == current_user.email,
                 HouseholdInvitation.status == InvitationStatus.PENDING
             ).all()
         
         return templates.TemplateResponse("index.html", {
             "request": request,
-            "user": updated_user,
+            "user": current_user,
             "households": households,
             "pending_invitations": pending_invitations,
             "message": f"You have successfully joined the household: {household.name}"
