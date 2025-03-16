@@ -184,12 +184,12 @@ async def add_member(
 async def add_self_to_household(
     request: Request,
     household_id: int = Form(...),
-    current_user: User = Depends(require_user),
+    auth_user: User = Depends(require_user),
     db: Session = Depends(get_db)
 ):
     try:
-        user_id = current_user.id  # Store the user ID for later retrieval
-        
+        user_id = auth_user.id  # Store the user ID for later retrieval
+        current_user = db.query(User).get(user_id)  
         # Check if user is already in a household
         if current_user.household_id:
             return templates.TemplateResponse("error.html", {
@@ -211,7 +211,6 @@ async def add_self_to_household(
         current_user.household_id = household_id
         db.commit()
         db.refresh(current_user)  # Refresh the current_user object with updated data
-        
         # Get updated list of households for the redirect
         if is_admin(current_user):
             households = db.query(Household).all()
