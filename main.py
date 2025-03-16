@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from models import User, FoodLog, Household, UserRole, HouseholdInvitation, InvitationStatus
+from models import User, FoodLog, Household, UserRole, HouseholdInvitation, InvitationStatus, UserHouseholdAssociation
 from database import SessionLocal
 import config
 from openai import OpenAI
@@ -92,7 +92,8 @@ async def read_form(request: Request, db: Session = Depends(get_db)):
         "request": request,
         "user": user,
         "households": households,
-        "pending_invitations": pending_invitations
+        "pending_invitations": pending_invitations,
+        "primary_household": primary_household
     })
 
 @app.get('/manage_household', response_class=HTMLResponse)
@@ -247,11 +248,18 @@ async def add_self_to_household(
                 HouseholdInvitation.status == InvitationStatus.PENDING
             ).all()
         
+        # Get all households for display
+        if is_admin(current_user):
+            all_households = db.query(Household).all()
+        else:
+            all_households = current_user.households
+            
         return templates.TemplateResponse("index.html", {
             "request": request,
             "user": current_user,
-            "households": households,
+            "households": all_households,
             "pending_invitations": pending_invitations,
+            "primary_household": current_user.get_primary_household(),
             "message": f"You have successfully joined the household: {household.name}"
         })
     except Exception as e:
