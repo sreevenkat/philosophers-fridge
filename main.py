@@ -103,7 +103,9 @@ async def manage_household(
     db: Session = Depends(get_db)
 ):
     households = db.query(Household).all()
-    users_without_household = db.query(User).filter(User.household_id == None).all()
+    # Get users who are not in any household
+    users_with_households = db.query(User.id).join(UserHouseholdAssociation).distinct().subquery()
+    users_without_household = db.query(User).filter(~User.id.in_(users_with_households)).all()
     
     return templates.TemplateResponse("household_form.html", {
         "request": request,
@@ -324,12 +326,14 @@ async def invite_member(
         })
     
     if existing_user:
-        if existing_user.household_id:
+        if existing_user.households:
             return templates.TemplateResponse("household_form.html", {
                 "request": request,
                 "user": admin,
                 "households": db.query(Household).all(),
-                "available_users": db.query(User).filter(User.household_id == None).all(),
+                "available_users": db.query(User).filter(~User.id.in_(
+                    db.query(User.id).join(UserHouseholdAssociation).distinct()
+                )).all(),
                 "error_message": f"User with email {email} is already in a household"
             })
         else:
@@ -354,7 +358,9 @@ async def invite_member(
                 "request": request,
                 "user": admin,
                 "households": db.query(Household).all(),
-                "available_users": db.query(User).filter(User.household_id == None).all(),
+                "available_users": db.query(User).filter(~User.id.in_(
+                    db.query(User.id).join(UserHouseholdAssociation).distinct()
+                )).all(),
                 "invite_url": invite_url,
                 "message": f"Invitation sent to {email}",
                 "pending_invitations": pending_invitations
@@ -676,11 +682,15 @@ async def add_food(
                 detail="Not authorized to add food for other users"
             )
     else:
-        # Admin users can only add food for users in their household
-        if user.household_id != current_user.household_id:
+        # Admin users can only add food for users in their households
+        current_user_household_ids = [h.id for h in current_user.households]
+        user_household_ids = [h.id for h in user.households]
+        
+        # Check if there's any overlap in households
+        if not any(hid in current_user_household_ids for hid in user_household_ids):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to add food for users outside your household"
+                detail="Not authorized to add food for users outside your households"
             )
 
     # Get calorie count from preferred AI
