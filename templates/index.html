@@ -187,11 +187,13 @@
                                         <div class="select is-fullwidth">
                                             <select name="user_id" id="user_id" required>
                                                 <option value="{{ user.id }}">{{ user.name }} (You)</option>
-                                                {% for member in user.household.members %}
-                                                    {% if member.id != user.id %}
-                                                    <option value="{{ member.id }}">{{ member.name }}</option>
-                                                    {% endif %}
-                                                {% endfor %}
+                                                {% if primary_household %}
+                                                    {% for member in primary_household.members %}
+                                                        {% if member.id != user.id %}
+                                                        <option value="{{ member.id }}">{{ member.name }}</option>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                {% endif %}
                                             </select>
                                         </div>
                                     </div>
