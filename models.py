@@ -42,8 +42,8 @@ class User(Base):
     additional_preferences = Column(String, nullable=True)
 
     # Relationships
-    household_associations = relationship('UserHouseholdAssociation', back_populates='user')
-    households = relationship('Household', secondary='user_household_association', back_populates='members')
+    household_associations = relationship('UserHouseholdAssociation', back_populates='user', overlaps="members")
+    households = relationship('Household', secondary='user_household_association', back_populates='members', overlaps="household_associations")
     food_logs = relationship('FoodLog', back_populates='user')
     
     def get_primary_household(self):
@@ -61,8 +61,8 @@ class UserHouseholdAssociation(Base):
     is_primary = Column(Boolean, default=False)
     joined_at = Column(DateTime, default=datetime.datetime.utcnow)
     
-    user = relationship('User', back_populates='household_associations')
-    household = relationship('Household')
+    user = relationship('User', back_populates='household_associations', overlaps="households,members")
+    household = relationship('Household', overlaps="households,members")
 
 class InvitationStatus(enum.Enum):
     PENDING = "pending"
