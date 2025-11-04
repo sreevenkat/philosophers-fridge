@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Food Log Records - Philosophers Fridge</title>
+    <title>Manage Users - Philosophers Fridge</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
@@ -56,7 +56,7 @@
                 <div class="level">
                     <div class="level-left">
                         <div class="level-item">
-                            <h1 class="title">Food Log Records</h1>
+                            <h1 class="title">Manage Users</h1>
                         </div>
                     </div>
                     <div class="level-right">
@@ -67,15 +67,6 @@
                                 </span>
                                 <span>Back to Home</span>
                             </a>
-                            
-                            {% if is_admin(user) %}
-                            <a href="/manage_users" class="button is-info ml-2">
-                                <span class="icon">
-                                    <i class="fas fa-users-cog"></i>
-                                </span>
-                                <span>Manage Users</span>
-                            </a>
-                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -84,30 +75,52 @@
                     <table class="table is-striped is-fullwidth">
                         <thead>
                             <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
                                 <th>Household</th>
-                                <th>User Name</th>
-                                <th>Food Name</th>
-                                <th>Portion Size</th>
-                                <th>Calories</th>
-                                <th>Timestamp</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for log in logs %}
+                            {% for u in users %}
                             <tr>
-                                <td>{{ log.household_name }}</td>
-                                <td>{{ log.user_name }}</td>
-                                <td>{{ log.food_name }}</td>
-                                <td>{{ log.portion_size }}</td>
-                                <td>{{ log.calorie_count }}</td>
-                                <td>{{ log.timestamp }}</td>
+                                <td>{{ u.id }}</td>
+                                <td>{{ u.name }}</td>
+                                <td>{{ u.email }}</td>
+                                <td>
+                                    <span class="tag {% if u.role.value == 'admin' %}is-danger{% else %}is-info{% endif %}">
+                                        {{ u.role.value }}
+                                    </span>
+                                </td>
+                                <td>{{ u.household.name if u.household else 'None' }}</td>
+                                <td>
+                                    {% if u.id != user.id %}
+                                    <form action="/update_user_role" method="post" class="is-inline">
+                                        <input type="hidden" name="user_id" value="{{ u.id }}">
+                                        <div class="field has-addons">
+                                            <div class="control">
+                                                <div class="select is-small">
+                                                    <select name="role">
+                                                        <option value="admin" {% if u.role and u.role.name == 'ADMIN' %}selected{% endif %}>Admin</option>
+                                                        <option value="member" {% if u.role and u.role.name == 'MEMBER' %}selected{% endif %}>Member</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="control">
+                                                <button type="submit" class="button is-small is-primary">
+                                                    Update
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                    {% else %}
+                                    <span class="tag is-warning">Current User</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
-                            {% if not logs %}
-                            <tr>
-                                <td colspan="6" class="has-text-centered">No food logs found</td>
-                            </tr>
-                            {% endif %}
                         </tbody>
                     </table>
                 </div>

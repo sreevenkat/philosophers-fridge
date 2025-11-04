@@ -7,3 +7,6 @@ passlib[bcrypt]
 python-multipart
 openai
 anthropic
+authlib
+httpx
+itsdangerous
