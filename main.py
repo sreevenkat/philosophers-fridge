@@ -718,7 +718,9 @@ async def add_food(
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "user": current_user,
-        "message": message
+        "message": message,
+        "primary_household": current_user.get_primary_household(),
+        "households": current_user.households if not is_admin(current_user) else db.query(Household).all()
     })
 
 async def get_calorie_count(food_name, portion_size):
