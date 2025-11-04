@@ -104,7 +104,7 @@ async def manage_household(
 ):
     households = db.query(Household).all()
     # Get users who are not in any household
-    users_with_households = db.query(User.id).join(UserHouseholdAssociation).distinct().subquery()
+    users_with_households = db.query(User.id).join(UserHouseholdAssociation).distinct()
     users_without_household = db.query(User).filter(~User.id.in_(users_with_households)).all()
     
     return templates.TemplateResponse("household_form.html", {
