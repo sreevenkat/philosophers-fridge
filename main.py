@@ -649,13 +649,19 @@ async def get_household_members(
     db: Session = Depends(get_db)
 ):
     # Check if user is admin or belongs to the requested household
-    if not is_admin(current_user) and current_user.household_id != household_id:
+    user_household_ids = [h.id for h in current_user.households]
+    if not is_admin(current_user) and household_id not in user_household_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view this household's members"
         )
     
-    members = db.query(User).filter(User.household_id == household_id).all()
+    # Get members of the household through the association table
+    household = db.query(Household).filter(Household.id == household_id).first()
+    if not household:
+        raise HTTPException(status_code=404, detail="Household not found")
+    
+    members = household.members
     return JSONResponse(content=[{"id": m.id, "name": m.name, "email": m.email} for m in members])
 
 @app.post('/add_food', response_class=HTMLResponse)
