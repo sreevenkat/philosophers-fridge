@@ -13,14 +13,6 @@ class UserRole(enum.Enum):
     ADMIN = "admin"
     MEMBER = "member"
 
-# Association table for many-to-many relationship between User and Household
-user_household_association = Table(
-    'user_household_association',
-    Base.metadata,
-    Column('user_id', Integer, ForeignKey('users.id')),
-    Column('household_id', Integer, ForeignKey('households.id')),
-    Column('is_primary', Boolean, default=False)  # To mark a primary household
-)
 
 class Household(Base):
     __tablename__ = 'households'
@@ -29,7 +21,7 @@ class Household(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     # Relationships
-    members = relationship('User', secondary=user_household_association, back_populates='households')
+    members = relationship('User', secondary='user_household_association', back_populates='households')
     invitations = relationship('HouseholdInvitation', back_populates='household')
 
 class User(Base):
@@ -51,7 +43,7 @@ class User(Base):
 
     # Relationships
     household_associations = relationship('UserHouseholdAssociation', back_populates='user')
-    households = relationship('Household', secondary=user_household_association, back_populates='members')
+    households = relationship('Household', secondary='user_household_association', back_populates='members')
     food_logs = relationship('FoodLog', back_populates='user')
     
     def get_primary_household(self):
