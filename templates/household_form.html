@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Manage Households</title>
+    <title>Manage Households - Philosophers Fridge</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
     <script defer src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"></script>
 </head>
 <body>
@@ -17,99 +18,313 @@
                 <span class="has-text-weight-bold">Philosophers Fridge</span>
             </a>
         </div>
-    </nav>
-
-    <section class="section">
-        <div class="container">
-            <div class="columns">
-                <div class="column is-8 is-offset-2">
-                    <div class="box">
-                        <h1 class="title">Manage Households</h1>
-                        
-                        <div class="block">
-                            <h2 class="subtitle">Create New Household</h2>
-                            <form action="/create_household" method="post">
-                                <div class="field has-addons">
-                                    <div class="control is-expanded">
-                                        <input class="input" type="text" name="household_name" placeholder="Household name" required>
-                                    </div>
-                                    <div class="control">
-                                        <button type="submit" class="button is-primary">
-                                            <span class="icon">
-                                                <i class="fas fa-plus"></i>
-                                            </span>
-                                            <span>Create Household</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-
-                        <div class="block">
-                            <h2 class="subtitle">Add Member to Household</h2>
-                            <form action="/add_member" method="post">
-                                <div class="field">
-                                    <div class="control">
-                                        <div class="select is-fullwidth">
-                                            <select name="household_id" required>
-                                                <option value="">Select a household...</option>
-                                                {% for household in households %}
-                                                <option value="{{ household.id }}">{{ household.name }}</option>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="field has-addons">
-                                    <div class="control is-expanded">
-                                        <input class="input" type="text" name="member_name" placeholder="Member name" required>
-                                    </div>
-                                    <div class="control">
-                                        <button type="submit" class="button is-primary">
-                                            <span class="icon">
-                                                <i class="fas fa-user-plus"></i>
-                                            </span>
-                                            <span>Add Member</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-
-                        <div class="block">
-                            <h2 class="subtitle">Current Households</h2>
-                            {% for household in households %}
-                            <div class="box">
-                                <h3 class="title is-5">{{ household.name }}</h3>
-                                <div id="members-{{ household.id }}" class="content">Loading members...</div>
+        
+        <div class="navbar-menu">
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <div class="buttons">
+                        {% if user %}
+                            <div class="navbar-item">
+                                <span>Welcome, {{ user.name }}</span>
+                                {% if is_admin(user) %}
+                                    <span class="tag is-danger ml-2">Admin</span>
+                                {% endif %}
                             </div>
-                            {% endfor %}
-                        </div>
+                            <a href="/logout" class="button is-light">
+                                <span class="icon">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                </span>
+                                <span>Logout</span>
+                            </a>
+                        {% else %}
+                            <a href="/login" class="button is-light">
+                                <span class="icon">
+                                    <i class="fas fa-sign-in-alt"></i>
+                                </span>
+                                <span>Login</span>
+                            </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
         </div>
+    </nav>
+
+    <section class="section">
+        <div class="container">
+            {% if error_message %}
+            <div class="notification is-danger">
+                {{ error_message }}
+            </div>
+            {% endif %}
+            
+            {% if message %}
+            <div class="notification is-success">
+                {{ message }}
+            </div>
+            {% endif %}
+            
+            {% if invite_url %}
+            <div class="box">
+                <h3 class="title is-5">Invitation Link</h3>
+                <div class="field has-addons">
+                    <div class="control is-expanded">
+                        <input class="input" type="text" id="inviteUrl" value="{{ invite_url }}" readonly>
+                    </div>
+                    <div class="control">
+                        <button class="button is-info" onclick="copyInviteUrl()">
+                            <span class="icon">
+                                <i class="fas fa-copy"></i>
+                            </span>
+                            <span>Copy</span>
+                        </button>
+                    </div>
+                </div>
+                <p class="help">Share this link with the invited person</p>
+            </div>
+            {% endif %}
+            
+            {% if pending_invitations %}
+            <div class="box">
+                <h3 class="title is-5">Pending Invitations</h3>
+                <table class="table is-fullwidth">
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Sent</th>
+                            <th>Expires</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for invitation in pending_invitations %}
+                        <tr>
+                            <td>{{ invitation.email }}</td>
+                            <td>{{ invitation.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                            <td>{{ invitation.expires_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                            <td>
+                                <div class="field has-addons">
+                                    <div class="control">
+                                        <input type="text" class="input is-small" id="invite-{{ invitation.id }}" 
+                                               value="{{ request.base_url }}join_household?code={{ invitation.invite_code }}" 
+                                               readonly style="width: 0; height: 0; opacity: 0; position: absolute;">
+                                        <button class="button is-small is-info" onclick="copyInvitation({{ invitation.id }})">
+                                            <span class="icon is-small">
+                                                <i class="fas fa-copy"></i>
+                                            </span>
+                                            <span>Copy Link</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+            
+            <div class="columns">
+                <div class="column is-half">
+                    <div class="box">
+                        <h3 class="title is-4">Create Household</h3>
+                        <form action="/create_household" method="post">
+                            <div class="field">
+                                <label class="label">Household Name</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="household_name" placeholder="Enter household name" required>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <div class="control">
+                                    <button class="button is-primary" type="submit">Create Household</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="column is-half">
+                    <div class="box">
+                        <h3 class="title is-4">Invite Member</h3>
+                        <form action="/invite_member" method="post">
+                            <div class="field">
+                                <label class="label">Select Household</label>
+                                <div class="control">
+                                    <div class="select is-fullwidth">
+                                        <select name="household_id" id="household_id" required>
+                                            <option value="">Select a household</option>
+                                            {% for household in households %}
+                                            <option value="{{ household.id }}">{{ household.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Email Address</label>
+                                <div class="control">
+                                    <input class="input" type="email" name="email" placeholder="Enter email address" required>
+                                </div>
+                                <p class="help">The person will receive an invitation link</p>
+                            </div>
+                            <div class="field">
+                                <div class="control">
+                                    <button class="button is-primary" type="submit">Send Invitation</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="box mt-5">
+                <h3 class="title is-4">Existing Households</h3>
+                <div class="table-container">
+                    <table class="table is-striped is-fullwidth">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Created</th>
+                                <th>Members</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for household in households %}
+                            <tr>
+                                <td>{{ household.id }}</td>
+                                <td>{{ household.name }}</td>
+                                <td>{{ household.created_at.strftime("%Y-%m-%d") }}</td>
+                                <td>{{ household.members|length }}</td>
+                                <td>
+                                    <button class="button is-small is-info" onclick="viewMembers({{ household.id }})">
+                                        View Members
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="membersModal" class="modal">
+                <div class="modal-background"></div>
+                <div class="modal-card">
+                    <header class="modal-card-head">
+                        <p class="modal-card-title">Household Members</p>
+                        <button class="delete" aria-label="close" onclick="closeModal()"></button>
+                    </header>
+                    <section class="modal-card-body">
+                        <div id="membersList">
+                            <p>Loading members...</p>
+                        </div>
+                    </section>
+                    <footer class="modal-card-foot">
+                        <button class="button" onclick="closeModal()">Close</button>
+                    </footer>
+                </div>
+            </div>
+            
+            <div class="buttons mt-5">
+                <a href="/" class="button is-primary">
+                    <span class="icon">
+                        <i class="fas fa-home"></i>
+                    </span>
+                    <span>Back to Home</span>
+                </a>
+            </div>
+        </div>
     </section>
-    </div>
-
+    
+    <footer class="footer">
+        <div class="content has-text-centered">
+            <p>
+                <strong>Philosophers Fridge</strong> - A thoughtful meal planning and nutrition tracking application.
+            </p>
+        </div>
+    </footer>
+    
     <script>
-        // Fetch and display members for each household
-        async function loadHouseholdMembers() {
-            {% for household in households %}
-            try {
-                const response = await fetch(`/get_household_members/{{ household.id }}`);
-                const members = await response.json();
-                const membersList = members.map(m => m.name).join(', ') || 'No members';
-                document.getElementById('members-{{ household.id }}').textContent = membersList;
-            } catch (error) {
-                console.error('Error loading members:', error);
-                document.getElementById('members-{{ household.id }}').textContent = 'Error loading members';
-            }
-            {% endfor %}
+        function viewMembers(householdId) {
+            document.getElementById('membersModal').classList.add('is-active');
+            document.getElementById('membersList').innerHTML = '<p>Loading members...</p>';
+            
+            fetch(`/get_household_members/${householdId}`)
+                .then(response => response.json())
+                .then(members => {
+                    let html = '';
+                    if (members.length === 0) {
+                        html = '<p>No members in this household</p>';
+                    } else {
+                        html = '<table class="table is-fullwidth">';
+                        html += '<thead><tr><th>ID</th><th>Name</th><th>Email</th></tr></thead>';
+                        html += '<tbody>';
+                        members.forEach(member => {
+                            html += `<tr><td>${member.id}</td><td>${member.name}</td><td>${member.email}</td></tr>`;
+                        });
+                        html += '</tbody></table>';
+                    }
+                    document.getElementById('membersList').innerHTML = html;
+                })
+                .catch(error => {
+                    document.getElementById('membersList').innerHTML = '<p class="has-text-danger">Error loading members</p>';
+                    console.error('Error:', error);
+                });
         }
-
-        // Load members when page loads
-        window.onload = loadHouseholdMembers;
+        
+        function closeModal() {
+            document.getElementById('membersModal').classList.remove('is-active');
+        }
+        
+        function copyInviteUrl() {
+            const inviteUrl = document.getElementById('inviteUrl');
+            inviteUrl.select();
+            document.execCommand('copy');
+            showToast('Invitation link copied to clipboard!');
+        }
+        
+        function copyInvitation(invitationId) {
+            const inviteElement = document.getElementById(`invite-${invitationId}`);
+            inviteElement.select();
+            document.execCommand('copy');
+            showToast('Invitation link copied to clipboard!');
+        }
+        
+        function showToast(message) {
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = 'notification is-success is-light';
+            toast.style.position = 'fixed';
+            toast.style.bottom = '20px';
+            toast.style.right = '20px';
+            toast.style.zIndex = '1000';
+            toast.style.minWidth = '250px';
+            toast.style.boxShadow = '0 3px 10px rgba(0,0,0,0.2)';
+            toast.style.transition = 'all 0.3s ease';
+            
+            // Add close button
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'delete';
+            closeBtn.onclick = function() {
+                document.body.removeChild(toast);
+            };
+            
+            toast.appendChild(closeBtn);
+            toast.appendChild(document.createTextNode(message));
+            
+            // Add to body
+            document.body.appendChild(toast);
+            
+            // Auto remove after 3 seconds
+            setTimeout(() => {
+                if (document.body.contains(toast)) {
+                    document.body.removeChild(toast);
+                }
+            }, 3000);
+        }
     </script>
 </body>
 </html>

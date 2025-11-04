@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - Philosophers Fridge</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script defer src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"></script>
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .hero-body {
+            padding: 3rem 1.5rem;
+        }
+        .google-button {
+            background-color: #4285F4;
+            color: white;
+        }
+        .google-button:hover {
+            background-color: #357ae8;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <section class="hero is-primary">
+        <div class="hero-body">
+            <div class="container has-text-centered">
+                <h1 class="title">
+                    <i class="fas fa-utensils"></i> Philosophers Fridge
+                </h1>
+                <h2 class="subtitle">
+                    A thoughtful meal planning and nutrition tracking application
+                </h2>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <div class="login-container">
+                <div class="box">
+                    <h3 class="title is-4 has-text-centered">Sign In</h3>
+                    <p class="has-text-centered mb-5">
+                        Please sign in to access your meal plans and food logs
+                    </p>
+                    
+                    <div class="buttons is-centered">
+                        <a href="/login" class="button is-fullwidth google-button">
+                            <span class="icon">
+                                <i class="fab fa-google"></i>
+                            </span>
+                            <span>Sign in with Google</span>
+                        </a>
+                    </div>
+                    
+                    <p class="has-text-centered mt-5 is-size-7">
+                        By signing in, you agree to our Terms of Service and Privacy Policy.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <footer class="footer">
+        <div class="content has-text-centered">
+            <p>
+                <strong>Philosophers Fridge</strong> - A thoughtful meal planning and nutrition tracking application.
+            </p>
+        </div>
+    </footer>
+</body>
+</html>

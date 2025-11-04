@@ -1,1 +1,1 @@
-PREFERRED_AI = 'openai'  # Options: 'openai' or 'anthropic'
+PREFERRED_AI = 'anthropic'  # Options: 'openai' or 'anthropic'

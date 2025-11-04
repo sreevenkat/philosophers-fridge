@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Error - Philosophers Fridge</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script defer src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"></script>
+</head>
+<body>
+    <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="/">
+                <span class="icon">
+                    <i class="fas fa-utensils"></i>
+                </span>
+                <span class="has-text-weight-bold">Philosophers Fridge</span>
+            </a>
+        </div>
+        
+        <div class="navbar-menu">
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <div class="buttons">
+                        {% if user %}
+                            <div class="navbar-item">
+                                <span>Welcome, {{ user.name }}</span>
+                                {% if is_admin(user) %}
+                                    <span class="tag is-danger ml-2">Admin</span>
+                                {% endif %}
+                            </div>
+                            <a href="/logout" class="button is-light">
+                                <span class="icon">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                </span>
+                                <span>Logout</span>
+                            </a>
+                        {% else %}
+                            <a href="/login" class="button is-light">
+                                <span class="icon">
+                                    <i class="fas fa-sign-in-alt"></i>
+                                </span>
+                                <span>Login</span>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <section class="section">
+        <div class="container">
+            <div class="box has-text-centered">
+                <span class="icon is-large has-text-danger">
+                    <i class="fas fa-exclamation-triangle fa-3x"></i>
+                </span>
+                
+                <h1 class="title mt-4">Error</h1>
+                
+                <div class="notification is-danger">
+                    {{ error_message }}
+                </div>
+                
+                <div class="buttons is-centered mt-5">
+                    <a href="/" class="button is-primary">
+                        <span class="icon">
+                            <i class="fas fa-home"></i>
+                        </span>
+                        <span>Back to Home</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <footer class="footer">
+        <div class="content has-text-centered">
+            <p>
+                <strong>Philosophers Fridge</strong> - A thoughtful meal planning and nutrition tracking application.
+            </p>
+        </div>
+    </footer>
+</body>
+</html>
