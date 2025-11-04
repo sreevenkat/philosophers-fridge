@@ -755,7 +755,7 @@ async def get_calories_from_openai(food_name, portion_size):
 async def get_calories_from_anthropic(food_name, portion_size):
     prompt = f"Estimate the total calories in {portion_size} of {food_name}. Respond with only a number, no words or units."
     print(f"Anthropic Prompt: {prompt}")
-    response = await anthropic_client.messages.create(
+    response = anthropic_client.messages.create(
         model="claude-3-haiku-20240307",
         max_tokens=50,
         temperature=0,
