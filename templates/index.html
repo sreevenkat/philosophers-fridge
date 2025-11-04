@@ -171,8 +171,8 @@
                                         <div class="select is-fullwidth">
                                             <select name="household_id" required>
                                                 {% for household in user.households %}
-                                                <option value="{{ household.id }}" {% if primary_household and household.id == primary_household.id %}selected{% endif %}>
-                                                    {{ household.name }}{% if primary_household and household.id == primary_household.id %} (Primary){% endif %}
+                                                <option value="{{ household.id }}" {% if primary_household and primary_household.id == household.id %}selected{% endif %}>
+                                                    {{ household.name }}{% if primary_household and primary_household.id == household.id %} (Primary){% endif %}
                                                 </option>
                                                 {% endfor %}
                                             </select>
