@@ -1,243 +1,176 @@
-# Deployment Guide: Philosophers Fridge on EC2 with Docker
+# Deployment Guide: Philosophers Fridge
 
-## Prerequisites
-- EC2 server with Docker and Docker Compose installed
-- Tailscale (if accessing via Tailscale network)
-- Resend account for sending emails (https://resend.com)
-- Domain name (optional, but recommended for HTTPS and email deliverability)
+## Quick Deploy Options
 
----
+### Option 1: Railway (Recommended) ⭐
 
-## Step 1: Set Up Resend for Email
+Railway offers the easiest deployment experience with automatic builds, persistent storage, and custom domains.
 
-### 1.1 Create Resend Account
+### Option 2: Docker on Your Server
 
-1. Go to [Resend](https://resend.com) and create an account
-2. Navigate to **API Keys** and create a new API key
-3. Copy the API key (starts with `re_`)
-
-### 1.2 Configure Sender Email
-
-**For Testing:**
-- Use `onboarding@resend.dev` as the sender
-- Note: This only works when sending to your own email address
-
-**For Production:**
-1. Go to **Domains** in Resend
-2. Add your domain (e.g., `yourdomain.com`)
-3. Add the DNS records Resend provides
-4. Once verified, use `noreply@yourdomain.com` as sender
+If you have your own EC2 or VPS server, use `docker-compose up -d`.
 
 ---
 
-## Step 2: Deploy on EC2
+## Railway Deployment
 
-### 2.1 Clone the Repository
+### Prerequisites
+- GitHub account
+- Railway account (https://railway.app)
+- Resend account for email (https://resend.com)
 
-```bash
-# SSH into your EC2 server
-ssh your-ec2-server
-
-# Clone the repo
-git clone https://github.com/your-username/philosophers-fridge.git
-cd philosophers-fridge
-```
-
-### 2.2 Create Environment File
+### Step 1: Push to GitHub
 
 ```bash
-# Copy the production template
-cp .env.production .env
-
-# Edit with your values
-nano .env
+git add .
+git commit -m "Prepare for Railway deployment"
+git push origin main
 ```
 
-Fill in your `.env` file:
+### Step 2: Create Railway Project
 
-```env
-# Resend API Key (from Step 1)
-RESEND_API_KEY=re_your_resend_api_key
+1. Go to [Railway Dashboard](https://railway.app/dashboard)
+2. Click **"New Project"**
+3. Select **"Deploy from GitHub repo"**
+4. Authorize Railway and select your `philosophers-fridge` repository
+5. Railway will auto-detect the Dockerfile and start building
 
-# Sender email - verified in Resend
-SENDER_EMAIL=noreply@yourdomain.com
+### Step 3: Add Persistent Volume (Important!)
 
-# AI API Key (at least one required for nutrition estimation)
-OPENAI_API_KEY=sk-your-openai-key
-# OR
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
+SQLite database needs persistent storage:
 
-# Which AI to use
-PREFERRED_AI=openai
+1. In your Railway project, click on your service
+2. Go to **Settings** → **Volumes**
+3. Click **"Add Volume"**
+4. Mount path: `/data`
+5. This persists your database across deployments
 
-# Generate a random secret
-SESSION_SECRET=your-random-secret-here
+### Step 4: Configure Environment Variables
 
-# Your access URL (used in email links)
-BASE_URL=http://your-ec2-tailscale-name:8080
-```
+In Railway dashboard → **Variables**, add:
 
-Generate a secure session secret:
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `OPENAI_API_KEY` | `sk-...` | Your OpenAI key |
+| `ANTHROPIC_API_KEY` | `sk-ant-...` | Or use Anthropic |
+| `PREFERRED_AI` | `openai` | or `anthropic` |
+| `RESEND_API_KEY` | `re_...` | From resend.com |
+| `SENDER_EMAIL` | `noreply@yourdomain.com` | Verified in Resend |
+| `BASE_URL` | `https://yourapp.up.railway.app` | Your Railway URL |
+| `SESSION_SECRET` | `(random string)` | Generate securely |
+| `DATABASE_PATH` | `/data/food_log.db` | Uses the volume |
+
+Generate a session secret:
 ```bash
 openssl rand -hex 32
 ```
 
-### 2.3 Create Docker Network
+### Step 5: Add Custom Domain (Optional)
 
-```bash
-docker network create web
-```
+1. In Railway → **Settings** → **Domains**
+2. Add your custom domain
+3. Configure DNS as instructed
+4. Railway provides free SSL
 
-### 2.4 Build and Run
+### Step 6: Deploy!
 
-```bash
-# Build and start the container
-docker compose up -d --build
-
-# Check logs
-docker compose logs -f
-```
+Railway auto-deploys on every git push. You can also:
+- Click **"Deploy"** in dashboard for manual deploy
+- View logs in the **"Deployments"** tab
 
 ---
 
-## Step 3: Access the Application
+## Environment Variables Reference
 
-### Via Tailscale
-If your EC2 is on your Tailscale network:
-```
-http://your-ec2-tailscale-name:8080
-```
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes* | OpenAI API key for nutrition estimation |
+| `ANTHROPIC_API_KEY` | Yes* | Anthropic API key (alternative to OpenAI) |
+| `PREFERRED_AI` | No | `openai` or `anthropic` (default: openai) |
+| `RESEND_API_KEY` | Yes | For sending verification/invitation emails |
+| `SENDER_EMAIL` | Yes | From address for emails (verify in Resend) |
+| `BASE_URL` | Yes | Full URL of your app (for email links) |
+| `SESSION_SECRET` | Yes | Secret key for session encryption |
+| `DATABASE_PATH` | No | Path to SQLite file (default: food_log.db) |
 
-### Via Domain (with Traefik/Nginx)
-If you have a reverse proxy, configure it to proxy to port 8080.
-
----
-
-## Step 4: User Registration & Login
-
-### How It Works
-
-1. **First User is Admin**: The first person to register becomes an admin
-2. **Email Verification Required**: Users must verify their email before logging in
-3. **Password Requirements**: Minimum 8 characters
-
-### User Flow
-
-1. User goes to `/register`
-2. Fills in name, email, password
-3. Receives verification email
-4. Clicks verification link
-5. Email is verified, user is logged in
-6. Can now access the application
+*At least one AI API key is required
 
 ---
 
-## Step 5: Inviting Users to Households
+## First-Time Setup
 
-### As an Admin
-
-1. Log in to your account
-2. Go to **Manage Households**
-3. Click **Invite Member**
-4. Enter the invitee's email address
-5. An invitation email is sent automatically
-
-### Invitation Flow
-
-1. Invitee receives email with invitation link
-2. If new user: redirected to register with invite code
-3. If existing user: redirected to login
-4. After registration/login, they're automatically added to the household
-
----
-
-## Step 6: Make a User Admin (Optional)
-
-If you need to make an additional user an admin:
-
-```bash
-# Enter the container
-docker compose exec philosophers-fridge bash
-
-# Use SQLite to update
-sqlite3 food_log.db
-```
-
-```sql
--- Find your user
-SELECT id, name, email, role FROM users;
-
--- Make them admin
-UPDATE users SET role = 'admin' WHERE email = 'user@example.com';
-
--- Verify
-SELECT * FROM users WHERE role = 'admin';
-```
-
----
-
-## Common Commands
-
-```bash
-# Start the app
-docker compose up -d
-
-# Stop the app
-docker compose down
-
-# View logs
-docker compose logs -f
-
-# Rebuild after code changes
-docker compose up -d --build
-
-# Access container shell
-docker compose exec philosophers-fridge bash
-
-# Backup database
-docker compose exec philosophers-fridge cat /app/food_log.db > backup.db
-```
+1. **Register**: Go to `/register` and create your account
+2. **First user is admin**: The first account automatically gets admin privileges
+3. **Verify email**: Check your inbox and click the verification link
+4. **Create household**: Go to home page and create your first household
+5. **Invite others**: Use "Manage Households" to invite family members
 
 ---
 
 ## Troubleshooting
 
 ### Emails Not Sending
+- Verify your Resend API key is correct
+- Check if sender email domain is verified in Resend
+- For testing, use `onboarding@resend.dev` (sends only to your email)
 
-1. Check Resend API key is correct
-2. Verify sender domain in Resend dashboard
-3. Check container logs for errors: `docker compose logs -f`
+### Database Empty After Redeploy
+- Make sure you've added a Railway volume mounted at `/data`
+- Set `DATABASE_PATH=/data/food_log.db` in environment variables
 
 ### Verification Links Not Working
+- Ensure `BASE_URL` matches your actual Railway URL
+- Include `https://` in the URL
 
-- Ensure `BASE_URL` in `.env` matches your actual access URL
-- Include the port if applicable (e.g., `:8080`)
-
-### Database Not Persisting
-
-- Ensure the `./food_log.db` volume mount exists
-- Check file permissions
-
-### Can't Connect to App
-
-- Verify the container is running: `docker compose ps`
-- Check if port 8080 is open in EC2 security group (or use Tailscale)
+### Railway Build Failing
+- Check build logs in Railway dashboard
+- Ensure Dockerfile syntax is correct
+- Verify requirements.txt is present
 
 ---
 
-## Security Notes
+## Backup & Restore
 
-1. **Session Secret**: Always use a unique, randomly generated secret
-2. **HTTPS**: For production, set up a reverse proxy with SSL
-3. **Email Verification**: Users must verify their email before logging in
-4. **Password Hashing**: Passwords are hashed using bcrypt
+### Backup Database
+```bash
+# SSH into container or use Railway CLI
+cp /data/food_log.db /data/backup_$(date +%Y%m%d).db
+```
+
+### Using Railway CLI
+```bash
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Login
+railway login
+
+# Connect to project
+railway link
+
+# Open shell
+railway run bash
+```
 
 ---
 
-## Production Recommendations
+## Security Checklist
 
-1. **Use HTTPS**: Set up a reverse proxy (Traefik, Nginx, Caddy) with Let's Encrypt SSL
-2. **Verify Domain in Resend**: Better email deliverability than using `onboarding@resend.dev`
-3. **Backup Database**: Schedule regular backups of `food_log.db`
-4. **Consider PostgreSQL**: For heavy usage, migrate from SQLite to PostgreSQL
-5. **Monitor Logs**: Set up log monitoring for error detection
+- [ ] Use a strong, unique `SESSION_SECRET`
+- [ ] Verify your email domain in Resend for better deliverability
+- [ ] Use HTTPS (Railway provides this automatically)
+- [ ] Keep API keys secret (never commit to git)
+- [ ] Regular database backups
+
+---
+
+## Cost Estimate (Railway)
+
+- **Hobby Plan**: $5/month
+  - 500 execution hours
+  - 1GB persistent storage
+  - Custom domains
+  - More than enough for personal/family use
+
+- **Free Trial**: $5 credit (no credit card required)
+  - Good for testing the deployment
