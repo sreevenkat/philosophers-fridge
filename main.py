@@ -13,7 +13,6 @@ import datetime
 import secrets
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from auth import (
     get_current_user, require_user, require_admin, is_admin,
     hash_password, verify_password, authenticate_user, create_user,
@@ -36,9 +35,15 @@ anthropic_client = anthropic.Client(api_key=anthropic_api_key) if anthropic_api_
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=os.getenv('SESSION_SECRET', os.getenv('SECRET_KEY', 'default-secret-key')))
 
-# Redirect all HTTP requests to HTTPS in production
-if os.getenv('RAILWAY_ENVIRONMENT'):
-    app.add_middleware(HTTPSRedirectMiddleware)
+# Redirect all HTTP requests to HTTPS in production, except for health checks
+@app.middleware("http")
+async def https_redirect_middleware(request: Request, call_next):
+    if os.getenv('RAILWAY_ENVIRONMENT') and request.headers.get("x-forwarded-proto") == "http":
+        if request.url.path != "/health":
+            url = request.url.replace(scheme="https")
+            return RedirectResponse(url, status_code=307)
+    
+    return await call_next(request)
 
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["is_admin"] = is_admin
