@@ -88,6 +88,14 @@ class FoodLog(Base):
     food_name = Column(String)
     portion_size = Column(String)
     calorie_count = Column(Float)
+    
+    # Nutritional information (in grams) - None indicates no data available
+    protein = Column(Float, nullable=True, default=None)
+    carbohydrates = Column(Float, nullable=True, default=None)
+    fiber = Column(Float, nullable=True, default=None)
+    fat = Column(Float, nullable=True, default=None)
+    sugar = Column(Float, nullable=True, default=None)
+    
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
     user_id = Column(Integer, ForeignKey('users.id'))
@@ -96,3 +104,4 @@ class FoodLog(Base):
     # Add household_id to track which household this food log belongs to
     household_id = Column(Integer, ForeignKey('households.id'))
     household = relationship('Household')
+

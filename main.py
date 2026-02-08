@@ -63,7 +63,12 @@ async def logout(request: Request):
     return RedirectResponse(url='/')
 
 @app.get('/', response_class=HTMLResponse)
-async def read_form(request: Request, db: Session = Depends(get_db)):
+async def read_form(
+    request: Request, 
+    db: Session = Depends(get_db),
+    start_date: str = Query(None),
+    end_date: str = Query(None)
+):
     user = get_current_user(request, db)
     
     if not user:
@@ -88,6 +93,97 @@ async def read_form(request: Request, db: Session = Depends(get_db)):
     # Get the user's primary household
     primary_household = user.get_primary_household()
     
+    # Set up date range (default to last 7 days)
+    today = datetime.datetime.now().date()
+    if end_date:
+        try:
+            end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            end_dt = today
+    else:
+        end_dt = today
+    
+    if start_date:
+        try:
+            start_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            start_dt = today - datetime.timedelta(days=6)
+    else:
+        start_dt = today - datetime.timedelta(days=6)
+    
+    # Convert to datetime for comparison (start of start_date to end of end_date)
+    start_datetime = datetime.datetime.combine(start_dt, datetime.time.min)
+    end_datetime = datetime.datetime.combine(end_dt, datetime.time.max)
+    
+    # Calculate nutrition stats for the date range
+    total_calories = 0
+    total_protein = 0
+    total_carbs = 0
+    total_fiber = 0
+    total_fat = 0
+    total_sugar = 0
+    nutrition_per_person = []
+    
+    if user.households:
+        household_ids = [h.id for h in user.households]
+        
+        # Get total nutrition
+        from sqlalchemy import func
+        totals = db.query(
+            func.sum(FoodLog.calorie_count).label('calories'),
+            func.sum(FoodLog.protein).label('protein'),
+            func.sum(FoodLog.carbohydrates).label('carbs'),
+            func.sum(FoodLog.fiber).label('fiber'),
+            func.sum(FoodLog.fat).label('fat'),
+            func.sum(FoodLog.sugar).label('sugar')
+        )\
+            .filter(FoodLog.household_id.in_(household_ids))\
+            .filter(FoodLog.timestamp >= start_datetime)\
+            .filter(FoodLog.timestamp <= end_datetime)\
+            .first()
+        
+        if totals:
+            total_calories = totals.calories or 0
+            total_protein = totals.protein or 0
+            total_carbs = totals.carbs or 0
+            total_fiber = totals.fiber or 0
+            total_fat = totals.fat or 0
+            total_sugar = totals.sugar or 0
+        
+        # Get nutrition per person
+        per_person = db.query(
+            User.id,
+            User.name,
+            func.sum(FoodLog.calorie_count).label('total_calories'),
+            func.sum(FoodLog.protein).label('total_protein'),
+            func.sum(FoodLog.carbohydrates).label('total_carbs'),
+            func.sum(FoodLog.fiber).label('total_fiber'),
+            func.sum(FoodLog.fat).label('total_fat'),
+            func.sum(FoodLog.sugar).label('total_sugar'),
+            func.count(FoodLog.id).label('log_count')
+        )\
+            .select_from(FoodLog)\
+            .join(User, FoodLog.user_id == User.id)\
+            .filter(FoodLog.household_id.in_(household_ids))\
+            .filter(FoodLog.timestamp >= start_datetime)\
+            .filter(FoodLog.timestamp <= end_datetime)\
+            .group_by(User.id, User.name)\
+            .order_by(func.sum(FoodLog.calorie_count).desc())\
+            .all()
+        
+        for person in per_person:
+            nutrition_per_person.append({
+                'user_id': person.id,
+                'user_name': person.name,
+                'total_calories': round(person.total_calories or 0, 0),
+                'total_protein': round(person.total_protein or 0, 1),
+                'total_carbs': round(person.total_carbs or 0, 1),
+                'total_fiber': round(person.total_fiber or 0, 1),
+                'total_fat': round(person.total_fat or 0, 1),
+                'total_sugar': round(person.total_sugar or 0, 1),
+                'log_count': person.log_count
+            })
+    
     # Get recent food logs (top 5) for user's households
     recent_logs = []
     if user.households:
@@ -109,7 +205,12 @@ async def read_form(request: Request, db: Session = Depends(get_db)):
                 'food_name': log.food_name,
                 'portion_size': log.portion_size,
                 'calorie_count': log.calorie_count,
-                'timestamp': log.timestamp.strftime("%Y-%m-%d %H:%M")
+                'protein': log.protein,
+                'carbohydrates': log.carbohydrates,
+                'fiber': log.fiber,
+                'fat': log.fat,
+                'sugar': log.sugar,
+                'timestamp': log.timestamp.strftime("%b %d, %Y %I:%M %p")
             })
     
     return templates.TemplateResponse("index.html", {
@@ -118,7 +219,16 @@ async def read_form(request: Request, db: Session = Depends(get_db)):
         "households": households,
         "pending_invitations": pending_invitations,
         "primary_household": primary_household,
-        "recent_logs": recent_logs
+        "recent_logs": recent_logs,
+        "total_calories": round(total_calories, 0),
+        "total_protein": round(total_protein, 1),
+        "total_carbs": round(total_carbs, 1),
+        "total_fiber": round(total_fiber, 1),
+        "total_fat": round(total_fat, 1),
+        "total_sugar": round(total_sugar, 1),
+        "nutrition_per_person": nutrition_per_person,
+        "start_date": start_dt.strftime("%Y-%m-%d"),
+        "end_date": end_dt.strftime("%Y-%m-%d")
     })
 
 @app.get('/manage_household', response_class=HTMLResponse)
@@ -822,22 +932,27 @@ async def add_food(
                 detail="Not authorized to add food for users outside your households"
             )
 
-    # Get calorie count from preferred AI
-    calorie_count = await get_calorie_count(food_name, portion_size)
+    # Get nutritional information from preferred AI
+    nutrition = await get_nutrition_info(food_name, portion_size)
 
-    # Add food log entry
+    # Add food log entry with full nutritional info
     food_log = FoodLog(
         user_id=user.id,
         household_id=household_id,
         food_name=food_name,
         portion_size=portion_size,
-        calorie_count=calorie_count
+        calorie_count=nutrition['calories'],
+        protein=nutrition['protein'],
+        carbohydrates=nutrition['carbohydrates'],
+        fiber=nutrition['fiber'],
+        fat=nutrition['fat'],
+        sugar=nutrition['sugar']
     )
     db.add(food_log)
     db.commit()
     db.refresh(food_log)
 
-    message = f"Entry added for {user.name}. Estimated calories: {calorie_count}"
+    message = f"Entry added for {user.name}. Calories: {nutrition['calories']:.0f} | Protein: {nutrition['protein']:.1f}g | Carbs: {nutrition['carbohydrates']:.1f}g | Fat: {nutrition['fat']:.1f}g"
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "user": current_user,
@@ -846,55 +961,80 @@ async def add_food(
         "households": current_user.households if not is_admin(current_user) else db.query(Household).all()
     })
 
-async def get_calorie_count(food_name, portion_size):
+async def get_nutrition_info(food_name, portion_size):
+    """Get complete nutritional information from AI"""
     if config.PREFERRED_AI == 'openai':
-        return await get_calories_from_openai(food_name, portion_size)
+        return await get_nutrition_from_openai(food_name, portion_size)
     elif config.PREFERRED_AI == 'anthropic':
-        return await get_calories_from_anthropic(food_name, portion_size)
+        return await get_nutrition_from_anthropic(food_name, portion_size)
     else:
-        return 0.0  # Default value or handle error
+        return {'calories': 0, 'protein': 0, 'carbohydrates': 0, 'fiber': 0, 'fat': 0, 'sugar': 0}
 
-async def get_calories_from_openai(food_name, portion_size):
-    prompt = f"Estimate the total calories in {portion_size} of {food_name}. Respond with only a number, no words or units."
-    print(f"OpenAI Prompt: {prompt}")
+async def get_nutrition_from_openai(food_name, portion_size):
+    import json
+    prompt = f"""Estimate the nutritional information for {portion_size} of {food_name}.
+Respond with ONLY a JSON object in this exact format, no other text:
+{{"calories": <number>, "protein": <grams>, "carbohydrates": <grams>, "fiber": <grams>, "fat": <grams>, "sugar": <grams>}}"""
+    
+    print(f"OpenAI Nutrition Prompt: {prompt}")
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=50,
+        max_tokens=100,
         temperature=0.0
     )
-    calorie_text = response.choices[0].message.content.strip()
-    print(f"OpenAI Response: {calorie_text}")
+    response_text = response.choices[0].message.content.strip()
+    print(f"OpenAI Response: {response_text}")
+    
     try:
-        # Remove any non-numeric characters except decimal points
-        cleaned_text = ''.join(c for c in calorie_text if c.isdigit() or c == '.')
-        calorie_count = float(cleaned_text)
-        print(f"Parsed calories: {calorie_count}")
-    except ValueError:
-        print(f"Failed to parse response as number: {calorie_text}")
-        calorie_count = 0.0
-    return calorie_count
+        nutrition = json.loads(response_text)
+        return {
+            'calories': float(nutrition.get('calories', 0)),
+            'protein': float(nutrition.get('protein', 0)),
+            'carbohydrates': float(nutrition.get('carbohydrates', 0)),
+            'fiber': float(nutrition.get('fiber', 0)),
+            'fat': float(nutrition.get('fat', 0)),
+            'sugar': float(nutrition.get('sugar', 0))
+        }
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"Failed to parse nutrition response: {e}")
+        return {'calories': 0, 'protein': 0, 'carbohydrates': 0, 'fiber': 0, 'fat': 0, 'sugar': 0}
 
-async def get_calories_from_anthropic(food_name, portion_size):
-    prompt = f"Estimate the total calories in {portion_size} of {food_name}. Respond with only a number, no words or units."
-    print(f"Anthropic Prompt: {prompt}")
+async def get_nutrition_from_anthropic(food_name, portion_size):
+    import json
+    prompt = f"""Estimate the nutritional information for {portion_size} of {food_name}.
+Respond with ONLY a JSON object in this exact format, no other text:
+{{"calories": <number>, "protein": <grams>, "carbohydrates": <grams>, "fiber": <grams>, "fat": <grams>, "sugar": <grams>}}"""
+    
+    print(f"Anthropic Nutrition Prompt: {prompt}")
     response = anthropic_client.messages.create(
         model="claude-3-haiku-20240307",
-        max_tokens=50,
+        max_tokens=100,
         temperature=0,
         messages=[{"role": "user", "content": prompt}]
     )
-    calorie_text = response.content[0].text.strip()
-    print(f"Anthropic Response: {calorie_text}")
+    response_text = response.content[0].text.strip()
+    print(f"Anthropic Response: {response_text}")
+    
     try:
-        # Remove any non-numeric characters except decimal points
-        cleaned_text = ''.join(c for c in calorie_text if c.isdigit() or c == '.')
-        calorie_count = float(cleaned_text)
-        print(f"Parsed calories: {calorie_count}")
-    except ValueError:
-        print(f"Failed to parse response as number: {calorie_text}")
-        calorie_count = 0.0
-    return calorie_count
+        nutrition = json.loads(response_text)
+        return {
+            'calories': float(nutrition.get('calories', 0)),
+            'protein': float(nutrition.get('protein', 0)),
+            'carbohydrates': float(nutrition.get('carbohydrates', 0)),
+            'fiber': float(nutrition.get('fiber', 0)),
+            'fat': float(nutrition.get('fat', 0)),
+            'sugar': float(nutrition.get('sugar', 0))
+        }
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"Failed to parse nutrition response: {e}")
+        return {'calories': 0, 'protein': 0, 'carbohydrates': 0, 'fiber': 0, 'fat': 0, 'sugar': 0}
+
+# Keep legacy function for backward compatibility
+async def get_calorie_count(food_name, portion_size):
+    nutrition = await get_nutrition_info(food_name, portion_size)
+    return nutrition['calories']
+
 
 @app.get('/view_logs', response_class=HTMLResponse)
 async def view_logs(
@@ -929,7 +1069,12 @@ async def view_logs(
             'food_name': log.food_name,
             'portion_size': log.portion_size,
             'calorie_count': log.calorie_count,
-            'timestamp': log.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            'protein': log.protein,
+            'carbohydrates': log.carbohydrates,
+            'fiber': log.fiber,
+            'fat': log.fat,
+            'sugar': log.sugar,
+            'timestamp': log.timestamp.strftime("%b %d, %Y %I:%M %p")
         })
     
     return templates.TemplateResponse(
