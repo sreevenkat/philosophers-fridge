@@ -25,8 +25,12 @@ from email_service import (
 
 load_dotenv()
 
-client = OpenAI()
-anthropic_client = anthropic.Client(api_key=os.getenv('ANTHROPIC_API_KEY'))
+# AI client initialization
+openai_api_key = os.getenv('OPENAI_API_KEY')
+client = OpenAI(api_key=openai_api_key) if openai_api_key else None
+
+anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+anthropic_client = anthropic.Client(api_key=anthropic_api_key) if anthropic_api_key else None
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=os.getenv('SESSION_SECRET', os.getenv('SECRET_KEY', 'default-secret-key')))
@@ -1263,6 +1267,10 @@ async def get_nutrition_info(food_name, portion_size):
 
 async def get_nutrition_from_openai(food_name, portion_size):
     import json
+    if not client:
+        print("OpenAI client not initialized (missing API key)")
+        return {'calories': 0, 'protein': 0, 'carbohydrates': 0, 'fiber': 0, 'fat': 0, 'sugar': 0}
+        
     prompt = f"""Estimate the nutritional information for {portion_size} of {food_name}.
 Respond with ONLY a JSON object in this exact format, no other text:
 {{"calories": <number>, "protein": <grams>, "carbohydrates": <grams>, "fiber": <grams>, "fat": <grams>, "sugar": <grams>}}"""
@@ -1293,6 +1301,10 @@ Respond with ONLY a JSON object in this exact format, no other text:
 
 async def get_nutrition_from_anthropic(food_name, portion_size):
     import json
+    if not anthropic_client:
+        print("Anthropic client not initialized (missing API key)")
+        return {'calories': 0, 'protein': 0, 'carbohydrates': 0, 'fiber': 0, 'fat': 0, 'sugar': 0}
+        
     prompt = f"""Estimate the nutritional information for {portion_size} of {food_name}.
 Respond with ONLY a JSON object in this exact format, no other text:
 {{"calories": <number>, "protein": <grams>, "carbohydrates": <grams>, "fiber": <grams>, "fat": <grams>, "sugar": <grams>}}"""

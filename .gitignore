@@ -27,8 +27,12 @@ ENV/
 
 # Environment Variables
 .env
+.env.secret
+.env.production
+.env.development
 .env.local
 .env.*.local
+.env.backup
 
 # IDE
 .idea/
