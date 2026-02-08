@@ -223,6 +223,54 @@
                                 </div>
                             </form>
                         </div>
+                        
+                        <!-- Recent Food Logs Section -->
+                        <div class="box">
+                            <div class="level">
+                                <div class="level-left">
+                                    <h3 class="title is-4">Recent Food Logs</h3>
+                                </div>
+                                <div class="level-right">
+                                    <a href="/view_logs" class="button is-info is-small">
+                                        <span class="icon">
+                                            <i class="fas fa-list"></i>
+                                        </span>
+                                        <span>View All</span>
+                                    </a>
+                                </div>
+                            </div>
+                            
+                            {% if recent_logs %}
+                            <div class="table-container">
+                                <table class="table is-striped is-fullwidth is-hoverable">
+                                    <thead>
+                                        <tr>
+                                            <th>Food</th>
+                                            <th>Portion</th>
+                                            <th>Calories</th>
+                                            <th>User</th>
+                                            <th>Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for log in recent_logs %}
+                                        <tr>
+                                            <td>{{ log.food_name }}</td>
+                                            <td>{{ log.portion_size }}</td>
+                                            <td>
+                                                <span class="tag is-success">{{ log.calorie_count|round(0)|int }} cal</span>
+                                            </td>
+                                            <td>{{ log.user_name }}</td>
+                                            <td>{{ log.timestamp }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% else %}
+                            <p class="has-text-grey">No food logs yet. Start logging your meals above!</p>
+                            {% endif %}
+                        </div>
                         {% endif %}
                     </div>
                 </div>

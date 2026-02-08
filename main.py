@@ -88,12 +88,37 @@ async def read_form(request: Request, db: Session = Depends(get_db)):
     # Get the user's primary household
     primary_household = user.get_primary_household()
     
+    # Get recent food logs (top 5) for user's households
+    recent_logs = []
+    if user.households:
+        household_ids = [h.id for h in user.households]
+        logs = db.query(FoodLog, User, Household)\
+            .select_from(FoodLog)\
+            .join(User, FoodLog.user_id == User.id)\
+            .join(Household, FoodLog.household_id == Household.id)\
+            .filter(FoodLog.household_id.in_(household_ids))\
+            .order_by(FoodLog.timestamp.desc())\
+            .limit(5)\
+            .all()
+        
+        for log, log_user, household in logs:
+            recent_logs.append({
+                'id': log.id,
+                'household_name': household.name,
+                'user_name': log_user.name,
+                'food_name': log.food_name,
+                'portion_size': log.portion_size,
+                'calorie_count': log.calorie_count,
+                'timestamp': log.timestamp.strftime("%Y-%m-%d %H:%M")
+            })
+    
     return templates.TemplateResponse("index.html", {
         "request": request,
         "user": user,
         "households": households,
         "pending_invitations": pending_invitations,
-        "primary_household": primary_household
+        "primary_household": primary_household,
+        "recent_logs": recent_logs
     })
 
 @app.get('/manage_household', response_class=HTMLResponse)
@@ -102,7 +127,8 @@ async def manage_household(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    households = db.query(Household).all()
+    # Only show households the admin is a member of
+    households = admin.households
     # Get users who are not in any household
     users_with_households = db.query(User.id).join(UserHouseholdAssociation).distinct()
     users_without_household = db.query(User).filter(~User.id.in_(users_with_households)).all()
@@ -126,19 +152,47 @@ async def create_household(
         existing_household = db.query(Household).filter(Household.name == household_name).first()
         if existing_household:
             households = db.query(Household).all()
+            # Get pending invitations for admin
+            pending_invitations = []
+            if admin.email:
+                pending_invitations = db.query(HouseholdInvitation).join(Household).filter(
+                    HouseholdInvitation.email == admin.email,
+                    HouseholdInvitation.status == InvitationStatus.PENDING
+                ).all()
             return templates.TemplateResponse("index.html", {
                 "request": request,
                 "user": admin,
                 "households": households,
+                "pending_invitations": pending_invitations,
+                "primary_household": admin.get_primary_household(),
                 "message": f"Household '{household_name}' already exists!"
             })
 
         # Create new household
         household = Household(name=household_name)
         db.add(household)
+        
+        # Store admin ID before commit (to avoid session detachment issues)
+        admin_id = admin.id
+        
         try:
             db.commit()
             db.refresh(household)
+            
+            # Re-query the admin user to check their current households
+            admin = db.query(User).filter(User.id == admin_id).first()
+            
+            # Add the creator as a member of the new household
+            is_first_household = len(admin.households) == 0
+            association = UserHouseholdAssociation(
+                user_id=admin.id,
+                household_id=household.id,
+                is_primary=is_first_household  # Set as primary if it's their first household
+            )
+            db.add(association)
+            db.commit()
+            db.refresh(admin)  # Refresh admin to get updated households list
+            
         except Exception as db_error:
             db.rollback()
             print(f"Database error: {str(db_error)}")
@@ -146,10 +200,19 @@ async def create_household(
 
         # Get updated list of households
         households = db.query(Household).all()
+        # Get pending invitations for admin
+        pending_invitations = []
+        if admin.email:
+            pending_invitations = db.query(HouseholdInvitation).join(Household).filter(
+                HouseholdInvitation.email == admin.email,
+                HouseholdInvitation.status == InvitationStatus.PENDING
+            ).all()
         return templates.TemplateResponse("index.html", {
             "request": request,
             "user": admin,
             "households": households,
+            "pending_invitations": pending_invitations,
+            "primary_household": admin.get_primary_household(),
             "message": f"Household '{household_name}' created successfully!"
         })
     except HTTPException as he:
@@ -157,12 +220,66 @@ async def create_household(
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         households = db.query(Household).all()
+        # Get pending invitations for admin
+        pending_invitations = []
+        if admin.email:
+            pending_invitations = db.query(HouseholdInvitation).join(Household).filter(
+                HouseholdInvitation.email == admin.email,
+                HouseholdInvitation.status == InvitationStatus.PENDING
+            ).all()
         return templates.TemplateResponse("index.html", {
             "request": request,
             "user": admin,
             "households": households,
+            "pending_invitations": pending_invitations,
+            "primary_household": admin.get_primary_household(),
             "message": "An unexpected error occurred while creating the household."
         }, status_code=500)
+
+@app.post('/delete_household', response_class=HTMLResponse)
+async def delete_household(
+    request: Request,
+    household_id: int = Form(...),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    # Check if household exists
+    household = db.query(Household).filter(Household.id == household_id).first()
+    if not household:
+        raise HTTPException(status_code=404, detail="Household not found")
+    
+    # Check if admin is a member of this household
+    if household not in admin.households:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete households you are a member of"
+        )
+    
+    household_name = household.name
+    
+    try:
+        # Delete all food logs associated with this household
+        db.query(FoodLog).filter(FoodLog.household_id == household_id).delete()
+        
+        # Delete all invitations associated with this household
+        db.query(HouseholdInvitation).filter(HouseholdInvitation.household_id == household_id).delete()
+        
+        # Delete all user-household associations
+        db.query(UserHouseholdAssociation).filter(UserHouseholdAssociation.household_id == household_id).delete()
+        
+        # Delete the household
+        db.delete(household)
+        db.commit()
+        
+        # Refresh admin to update their households list
+        db.refresh(admin)
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Error deleting household: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error deleting household")
+    
+    return RedirectResponse(url='/manage_household', status_code=303)
 
 @app.post('/add_member', response_class=HTMLResponse)
 async def add_member(
@@ -190,7 +307,7 @@ async def add_member(
     db.add(association)
     db.commit()
     
-    return await manage_household(request, db)
+    return RedirectResponse(url='/manage_household', status_code=303)
 
 @app.post('/add_self_to_household', response_class=HTMLResponse)
 async def add_self_to_household(
@@ -287,11 +404,13 @@ async def invite_member(
     
     # Prevent self-invitation
     if admin.email.lower() == email.lower():
+        # Get users who are not in any household
+        users_with_households = db.query(User.id).join(UserHouseholdAssociation).distinct()
         return templates.TemplateResponse("household_form.html", {
             "request": request,
             "user": admin,
             "households": db.query(Household).all(),
-            "available_users": db.query(User).filter(User.household_id == None).all(),
+            "available_users": db.query(User).filter(~User.id.in_(users_with_households)).all(),
             "error_message": "You cannot invite yourself. Use 'Join Household' from the home page instead."
         })
     
@@ -315,11 +434,13 @@ async def invite_member(
             HouseholdInvitation.status == InvitationStatus.PENDING
         ).all()
         
+        # Get users who are not in any household
+        users_with_households = db.query(User.id).join(UserHouseholdAssociation).distinct()
         return templates.TemplateResponse("household_form.html", {
             "request": request,
             "user": admin,
             "households": db.query(Household).all(),
-            "available_users": db.query(User).filter(User.household_id == None).all(),
+            "available_users": db.query(User).filter(~User.id.in_(users_with_households)).all(),
             "invite_url": invite_url,
             "message": f"Invitation for {email} already exists",
             "pending_invitations": pending_invitations
@@ -383,11 +504,13 @@ async def invite_member(
             HouseholdInvitation.status == InvitationStatus.PENDING
         ).all()
         
+        # Get users who are not in any household
+        users_with_households = db.query(User.id).join(UserHouseholdAssociation).distinct()
         return templates.TemplateResponse("household_form.html", {
             "request": request,
             "user": admin,
             "households": db.query(Household).all(),
-            "available_users": db.query(User).filter(User.household_id == None).all(),
+            "available_users": db.query(User).filter(~User.id.in_(users_with_households)).all(),
             "invite_url": invite_url,
             "message": f"Invitation sent to {email}",
             "pending_invitations": pending_invitations

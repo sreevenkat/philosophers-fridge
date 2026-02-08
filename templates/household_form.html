@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Manage Households - Philosophers Fridge</title>
     <meta charset="utf-8">
@@ -8,6 +9,7 @@
     <link rel="stylesheet" href="/static/css/style.css">
     <script defer src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"></script>
 </head>
+
 <body>
     <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
         <div class="navbar-brand">
@@ -18,31 +20,31 @@
                 <span class="has-text-weight-bold">Philosophers Fridge</span>
             </a>
         </div>
-        
+
         <div class="navbar-menu">
             <div class="navbar-end">
                 <div class="navbar-item">
                     <div class="buttons">
                         {% if user %}
-                            <div class="navbar-item">
-                                <span>Welcome, {{ user.name }}</span>
-                                {% if is_admin(user) %}
-                                    <span class="tag is-danger ml-2">Admin</span>
-                                {% endif %}
-                            </div>
-                            <a href="/logout" class="button is-light">
-                                <span class="icon">
-                                    <i class="fas fa-sign-out-alt"></i>
-                                </span>
-                                <span>Logout</span>
-                            </a>
+                        <div class="navbar-item">
+                            <span>Welcome, {{ user.name }}</span>
+                            {% if is_admin(user) %}
+                            <span class="tag is-danger ml-2">Admin</span>
+                            {% endif %}
+                        </div>
+                        <a href="/logout" class="button is-light">
+                            <span class="icon">
+                                <i class="fas fa-sign-out-alt"></i>
+                            </span>
+                            <span>Logout</span>
+                        </a>
                         {% else %}
-                            <a href="/login" class="button is-light">
-                                <span class="icon">
-                                    <i class="fas fa-sign-in-alt"></i>
-                                </span>
-                                <span>Login</span>
-                            </a>
+                        <a href="/login" class="button is-light">
+                            <span class="icon">
+                                <i class="fas fa-sign-in-alt"></i>
+                            </span>
+                            <span>Login</span>
+                        </a>
                         {% endif %}
                     </div>
                 </div>
@@ -57,13 +59,13 @@
                 {{ error_message }}
             </div>
             {% endif %}
-            
+
             {% if message %}
             <div class="notification is-success">
                 {{ message }}
             </div>
             {% endif %}
-            
+
             {% if invite_url %}
             <div class="box">
                 <h3 class="title is-5">Invitation Link</h3>
@@ -83,7 +85,7 @@
                 <p class="help">Share this link with the invited person</p>
             </div>
             {% endif %}
-            
+
             {% if pending_invitations %}
             <div class="box">
                 <h3 class="title is-5">Pending Invitations</h3>
@@ -105,10 +107,11 @@
                             <td>
                                 <div class="field has-addons">
                                     <div class="control">
-                                        <input type="text" class="input is-small" id="invite-{{ invitation.id }}" 
-                                               value="{{ request.base_url }}join_household?code={{ invitation.invite_code }}" 
-                                               readonly style="width: 0; height: 0; opacity: 0; position: absolute;">
-                                        <button class="button is-small is-info" onclick="copyInvitation({{ invitation.id }})">
+                                        <input type="text" class="input is-small" id="invite-{{ invitation.id }}"
+                                            value="{{ request.base_url }}join_household?code={{ invitation.invite_code }}"
+                                            readonly style="width: 0; height: 0; opacity: 0; position: absolute;">
+                                        <button class="button is-small is-info"
+                                            onclick="copyInvitation({{ invitation.id }})">
                                             <span class="icon is-small">
                                                 <i class="fas fa-copy"></i>
                                             </span>
@@ -123,7 +126,7 @@
                 </table>
             </div>
             {% endif %}
-            
+
             <div class="columns">
                 <div class="column is-half">
                     <div class="box">
@@ -132,7 +135,8 @@
                             <div class="field">
                                 <label class="label">Household Name</label>
                                 <div class="control">
-                                    <input class="input" type="text" name="household_name" placeholder="Enter household name" required>
+                                    <input class="input" type="text" name="household_name"
+                                        placeholder="Enter household name" required>
                                 </div>
                             </div>
                             <div class="field">
@@ -143,7 +147,7 @@
                         </form>
                     </div>
                 </div>
-                
+
                 <div class="column is-half">
                     <div class="box">
                         <h3 class="title is-4">Invite Member</h3>
@@ -164,7 +168,8 @@
                             <div class="field">
                                 <label class="label">Email Address</label>
                                 <div class="control">
-                                    <input class="input" type="email" name="email" placeholder="Enter email address" required>
+                                    <input class="input" type="email" name="email" placeholder="Enter email address"
+                                        required>
                                 </div>
                                 <p class="help">The person will receive an invitation link</p>
                             </div>
@@ -177,7 +182,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="box mt-5">
                 <h3 class="title is-4">Existing Households</h3>
                 <div class="table-container">
@@ -199,9 +204,27 @@
                                 <td>{{ household.created_at.strftime("%Y-%m-%d") }}</td>
                                 <td>{{ household.members|length }}</td>
                                 <td>
-                                    <button class="button is-small is-info" onclick="viewMembers({{ household.id }})">
-                                        View Members
-                                    </button>
+                                    <div class="buttons are-small">
+                                        <button class="button is-info" onclick="viewMembers({{ household.id }})">
+                                            <span class="icon is-small">
+                                                <i class="fas fa-users"></i>
+                                            </span>
+                                            <span>View Members</span>
+                                        </button>
+                                        {% set user_household_ids = user.households | map(attribute='id') | list %}
+                                        {% if household.id in user_household_ids %}
+                                        <form action="/delete_household" method="post" class="is-inline"
+                                            onsubmit="return confirm('Are you sure you want to delete the household \\'{{ household.name }}\\'? This will remove all members and delete all food logs associated with this household.');">
+                                            <input type="hidden" name="household_id" value="{{ household.id }}">
+                                            <button type="submit" class="button is-danger">
+                                                <span class="icon is-small">
+                                                    <i class="fas fa-trash"></i>
+                                                </span>
+                                                <span>Delete</span>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -209,7 +232,7 @@
                     </table>
                 </div>
             </div>
-            
+
             <div id="membersModal" class="modal">
                 <div class="modal-background"></div>
                 <div class="modal-card">
@@ -227,7 +250,7 @@
                     </footer>
                 </div>
             </div>
-            
+
             <div class="buttons mt-5">
                 <a href="/" class="button is-primary">
                     <span class="icon">
@@ -238,7 +261,7 @@
             </div>
         </div>
     </section>
-    
+
     <footer class="footer">
         <div class="content has-text-centered">
             <p>
@@ -246,12 +269,12 @@
             </p>
         </div>
     </footer>
-    
+
     <script>
         function viewMembers(householdId) {
             document.getElementById('membersModal').classList.add('is-active');
             document.getElementById('membersList').innerHTML = '<p>Loading members...</p>';
-            
+
             fetch(`/get_household_members/${householdId}`)
                 .then(response => response.json())
                 .then(members => {
@@ -274,25 +297,25 @@
                     console.error('Error:', error);
                 });
         }
-        
+
         function closeModal() {
             document.getElementById('membersModal').classList.remove('is-active');
         }
-        
+
         function copyInviteUrl() {
             const inviteUrl = document.getElementById('inviteUrl');
             inviteUrl.select();
             document.execCommand('copy');
             showToast('Invitation link copied to clipboard!');
         }
-        
+
         function copyInvitation(invitationId) {
             const inviteElement = document.getElementById(`invite-${invitationId}`);
             inviteElement.select();
             document.execCommand('copy');
             showToast('Invitation link copied to clipboard!');
         }
-        
+
         function showToast(message) {
             // Create toast element
             const toast = document.createElement('div');
@@ -304,20 +327,20 @@
             toast.style.minWidth = '250px';
             toast.style.boxShadow = '0 3px 10px rgba(0,0,0,0.2)';
             toast.style.transition = 'all 0.3s ease';
-            
+
             // Add close button
             const closeBtn = document.createElement('button');
             closeBtn.className = 'delete';
-            closeBtn.onclick = function() {
+            closeBtn.onclick = function () {
                 document.body.removeChild(toast);
             };
-            
+
             toast.appendChild(closeBtn);
             toast.appendChild(document.createTextNode(message));
-            
+
             // Add to body
             document.body.appendChild(toast);
-            
+
             // Auto remove after 3 seconds
             setTimeout(() => {
                 if (document.body.contains(toast)) {
@@ -327,4 +350,5 @@
         }
     </script>
 </body>
+
 </html>
