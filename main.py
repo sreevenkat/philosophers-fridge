@@ -10,9 +10,18 @@ from openai import OpenAI
 import anthropic
 import os
 import datetime
+import secrets
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
-from auth import oauth, get_current_user, require_user, require_admin, is_admin, create_or_update_user
+from auth import (
+    get_current_user, require_user, require_admin, is_admin,
+    hash_password, verify_password, authenticate_user, create_user,
+    generate_verification_token, get_verification_link, get_password_reset_link,
+    get_invitation_link, BASE_URL
+)
+from email_service import (
+    send_verification_email, send_password_reset_email, send_household_invitation_email
+)
 
 load_dotenv()
 
@@ -20,7 +29,7 @@ client = OpenAI()
 anthropic_client = anthropic.Client(api_key=os.getenv('ANTHROPIC_API_KEY'))
 
 app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key=os.getenv('SECRET_KEY', 'default-secret-key'))
+app.add_middleware(SessionMiddleware, secret_key=os.getenv('SESSION_SECRET', os.getenv('SECRET_KEY', 'default-secret-key')))
 
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["is_admin"] = is_admin
@@ -35,32 +44,297 @@ def get_db():
     finally:
         db.close()
 
-# Authentication routes
-@app.get('/login')
-async def login(request: Request):
-    redirect_uri = request.url_for('auth')
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+# ============================================
+# Authentication Routes (Email/Password)
+# ============================================
 
-@app.get('/auth')
-async def auth(request: Request, db: Session = Depends(get_db)):
-    token = await oauth.google.authorize_access_token(request)
-    user_info = token.get('userinfo')
+@app.get('/login', response_class=HTMLResponse)
+async def login_page(request: Request, error: str = None, message: str = None):
+    """Show login page."""
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "error": error,
+        "message": message
+    })
+
+@app.post('/login')
+async def login(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Handle login form submission."""
+    user = authenticate_user(db, email, password)
     
-    if not user_info:
-        return RedirectResponse(url='/login')
+    if not user:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Invalid email or password"
+        })
     
-    # Create or update user in database
-    user = create_or_update_user(db, user_info)
+    if not user.is_email_verified:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Please verify your email before logging in. Check your inbox for the verification link."
+        })
     
     # Store user email in session
     request.session['user_email'] = user.email
     
-    return RedirectResponse(url='/')
+    return RedirectResponse(url='/', status_code=303)
+
+@app.get('/register', response_class=HTMLResponse)
+async def register_page(request: Request, error: str = None, invite_code: str = None):
+    """Show registration page."""
+    return templates.TemplateResponse("register.html", {
+        "request": request,
+        "error": error,
+        "invite_code": invite_code
+    })
+
+@app.post('/register')
+async def register(
+    request: Request,
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+    invite_code: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    """Handle registration form submission."""
+    # Validate password match
+    if password != confirm_password:
+        return templates.TemplateResponse("register.html", {
+            "request": request,
+            "error": "Passwords do not match",
+            "invite_code": invite_code
+        })
+    
+    # Validate password strength
+    if len(password) < 8:
+        return templates.TemplateResponse("register.html", {
+            "request": request,
+            "error": "Password must be at least 8 characters",
+            "invite_code": invite_code
+        })
+    
+    # Check if user already exists
+    existing_user = db.query(User).filter(User.email == email).first()
+    if existing_user:
+        return templates.TemplateResponse("register.html", {
+            "request": request,
+            "error": "An account with this email already exists",
+            "invite_code": invite_code
+        })
+    
+    # Check if this is the first user (make them admin)
+    is_first_user = db.query(User).count() == 0
+    
+    # Create user
+    user = create_user(db, email, password, name, is_first_user)
+    
+    # Send verification email
+    verification_link = get_verification_link(user.email_verification_token)
+    send_verification_email(user.email, user.name, verification_link)
+    
+    # If there's an invite code, store it in session for after verification
+    if invite_code:
+        request.session['pending_invite_code'] = invite_code
+    
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "message": "Registration successful! Please check your email to verify your account."
+    })
+
+@app.get('/verify-email/{token}')
+async def verify_email(request: Request, token: str, db: Session = Depends(get_db)):
+    """Verify user's email address."""
+    user = db.query(User).filter(User.email_verification_token == token).first()
+    
+    if not user:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Invalid verification link"
+        })
+    
+    if user.email_verification_expires < datetime.datetime.utcnow():
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Verification link has expired. Please register again."
+        })
+    
+    # Mark email as verified
+    user.is_email_verified = True
+    user.email_verification_token = None
+    user.email_verification_expires = None
+    db.commit()
+    
+    # Auto-login the user
+    request.session['user_email'] = user.email
+    
+    # Check for pending invite
+    invite_code = request.session.pop('pending_invite_code', None)
+    if invite_code:
+        return RedirectResponse(url=f'/accept-invite/{invite_code}', status_code=303)
+    
+    return RedirectResponse(url='/?message=Email verified successfully!', status_code=303)
+
+@app.get('/forgot-password', response_class=HTMLResponse)
+async def forgot_password_page(request: Request):
+    """Show forgot password page."""
+    return templates.TemplateResponse("forgot_password.html", {"request": request})
+
+@app.post('/forgot-password')
+async def forgot_password(
+    request: Request,
+    email: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Handle forgot password form submission."""
+    user = db.query(User).filter(User.email == email).first()
+    
+    # Always show success message (don't reveal if email exists)
+    if user:
+        # Generate reset token
+        token = secrets.token_urlsafe(32)
+        user.password_reset_token = token
+        user.password_reset_expires = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        db.commit()
+        
+        # Send reset email
+        reset_link = get_password_reset_link(token)
+        send_password_reset_email(user.email, user.name, reset_link)
+    
+    return templates.TemplateResponse("forgot_password.html", {
+        "request": request,
+        "message": "If an account with that email exists, we've sent a password reset link."
+    })
+
+@app.get('/reset-password/{token}', response_class=HTMLResponse)
+async def reset_password_page(request: Request, token: str, db: Session = Depends(get_db)):
+    """Show reset password page."""
+    user = db.query(User).filter(User.password_reset_token == token).first()
+    
+    if not user or user.password_reset_expires < datetime.datetime.utcnow():
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Invalid or expired reset link"
+        })
+    
+    return templates.TemplateResponse("reset_password.html", {
+        "request": request,
+        "token": token
+    })
+
+@app.post('/reset-password/{token}')
+async def reset_password(
+    request: Request,
+    token: str,
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Handle password reset form submission."""
+    user = db.query(User).filter(User.password_reset_token == token).first()
+    
+    if not user or user.password_reset_expires < datetime.datetime.utcnow():
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Invalid or expired reset link"
+        })
+    
+    if password != confirm_password:
+        return templates.TemplateResponse("reset_password.html", {
+            "request": request,
+            "token": token,
+            "error": "Passwords do not match"
+        })
+    
+    if len(password) < 8:
+        return templates.TemplateResponse("reset_password.html", {
+            "request": request,
+            "token": token,
+            "error": "Password must be at least 8 characters"
+        })
+    
+    # Update password
+    user.password_hash = hash_password(password)
+    user.password_reset_token = None
+    user.password_reset_expires = None
+    db.commit()
+    
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "message": "Password reset successful! You can now log in with your new password."
+    })
 
 @app.get('/logout')
 async def logout(request: Request):
+    """Log out the current user."""
     request.session.pop('user_email', None)
-    return RedirectResponse(url='/')
+    return RedirectResponse(url='/login')
+
+@app.get('/accept-invite/{invite_code}')
+async def accept_invite(
+    request: Request,
+    invite_code: str,
+    db: Session = Depends(get_db)
+):
+    """Handle invitation link clicks. Redirects to register or processes acceptance."""
+    # Find the invitation
+    invitation = db.query(HouseholdInvitation).filter(
+        HouseholdInvitation.invite_code == invite_code,
+        HouseholdInvitation.status == InvitationStatus.PENDING
+    ).first()
+    
+    if not invitation:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Invalid or expired invitation link"
+        })
+    
+    # Check if invitation has expired
+    if invitation.expires_at and invitation.expires_at < datetime.datetime.utcnow():
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "This invitation has expired"
+        })
+    
+    # Check if user is logged in
+    user = get_current_user(request, db)
+    
+    if user:
+        # User is logged in - check if their email matches
+        if user.email.lower() == invitation.email.lower():
+            # Accept the invitation
+            assoc = UserHouseholdAssociation(
+                user_id=user.id,
+                household_id=invitation.household_id,
+                is_primary=len(user.households) == 0
+            )
+            db.add(assoc)
+            invitation.status = InvitationStatus.ACCEPTED
+            db.commit()
+            
+            return RedirectResponse(url='/?message=You have joined the household!', status_code=303)
+        else:
+            return templates.TemplateResponse("login.html", {
+                "request": request,
+                "error": f"This invitation was sent to {invitation.email}. Please logout and login with that email."
+            })
+    
+    # Check if user with this email already exists
+    existing_user = db.query(User).filter(User.email == invitation.email).first()
+    
+    if existing_user:
+        # Redirect to login
+        request.session['pending_invite_code'] = invite_code
+        return RedirectResponse(url='/login?message=Please login to accept the invitation', status_code=303)
+    else:
+        # Redirect to registration with invite code
+        return RedirectResponse(url=f'/register?invite_code={invite_code}', status_code=303)
 
 @app.get('/', response_class=HTMLResponse)
 async def read_form(
@@ -577,7 +851,15 @@ async def invite_member(
             db.commit()
             db.refresh(invitation)
             
-            invite_url = f"{request.base_url}join_household?code={invitation.invite_code}"
+            invite_url = f"{BASE_URL}/join_household?code={invitation.invite_code}"
+            
+            # Send invitation email
+            send_household_invitation_email(
+                to_email=email,
+                inviter_name=admin.name,
+                household_name=household.name,
+                invitation_link=invite_url
+            )
             
             # Get all pending invitations for this household
             pending_invitations = db.query(HouseholdInvitation).filter(
@@ -593,7 +875,7 @@ async def invite_member(
                     db.query(User.id).join(UserHouseholdAssociation).distinct()
                 )).all(),
                 "invite_url": invite_url,
-                "message": f"Invitation sent to {email}",
+                "message": f"Invitation email sent to {email}",
                 "pending_invitations": pending_invitations
             })
     else:
@@ -606,7 +888,16 @@ async def invite_member(
         db.commit()
         db.refresh(invitation)
         
-        invite_url = f"{request.base_url}join_household?code={invitation.invite_code}"
+        # Use accept-invite route which will prompt registration
+        invite_url = f"{BASE_URL}/accept-invite/{invitation.invite_code}"
+        
+        # Send invitation email
+        send_household_invitation_email(
+            to_email=email,
+            inviter_name=admin.name,
+            household_name=household.name,
+            invitation_link=invite_url
+        )
         
         # Get all pending invitations for this household
         pending_invitations = db.query(HouseholdInvitation).filter(
@@ -622,7 +913,7 @@ async def invite_member(
             "households": db.query(Household).all(),
             "available_users": db.query(User).filter(~User.id.in_(users_with_households)).all(),
             "invite_url": invite_url,
-            "message": f"Invitation sent to {email}",
+            "message": f"Invitation email sent to {email}",
             "pending_invitations": pending_invitations
         })
 

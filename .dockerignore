@@ -1,0 +1,48 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Environment files (we'll use docker-compose env)
+.env
+.env.local
+.env.development
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation
+*.md
+!requirements.txt
+
+# Test files
+tests/
+test_*.py
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Local data (will be mounted as volume)
+data/
+
+# Aider history
+.aider*
+
+# Gemini directory
+.gemini/
+.agent/

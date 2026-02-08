@@ -29,9 +29,19 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String)
     email = Column(String, unique=True)
-    google_id = Column(String, unique=True)
-    picture = Column(String, nullable=True)
+    password_hash = Column(String, nullable=True)  # Hashed password
+    
+    # Email verification
+    is_email_verified = Column(Boolean, default=False)
+    email_verification_token = Column(String, nullable=True)
+    email_verification_expires = Column(DateTime, nullable=True)
+    
+    # Password reset
+    password_reset_token = Column(String, nullable=True)
+    password_reset_expires = Column(DateTime, nullable=True)
+    
     role = Column(Enum(UserRole), default=UserRole.MEMBER)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     # Nutritional preferences and goals
     daily_calorie_goal = Column(Integer, nullable=True)

@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  philosophers-fridge:
+    build: .
+    container_name: philosophers-fridge
+    restart: unless-stopped
+    ports:
+      - "8080:8000"
+    volumes:
+      # Persist the SQLite database
+      - ./data:/app/data
+      - ./food_log.db:/app/food_log.db
+    environment:
+      # Resend API key for sending emails (get from resend.com)
+      - RESEND_API_KEY=${RESEND_API_KEY}
+
+      # Sender email (must be verified domain in Resend, or use onboarding@resend.dev for testing)
+      - SENDER_EMAIL=${SENDER_EMAIL:-onboarding@resend.dev}
+
+      # AI API keys (at least one required for calorie estimation)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+
+      # Which AI to use: 'openai' or 'anthropic'
+      - PREFERRED_AI=${PREFERRED_AI:-openai}
+
+      # Session secret (generate a random string: openssl rand -hex 32)
+      - SESSION_SECRET=${SESSION_SECRET:-change-this-to-a-random-string}
+
+      # Base URL for email links (IMPORTANT: set to your domain/IP)
+      - BASE_URL=${BASE_URL:-http://localhost:8080}
+    networks:
+      - web
+
+networks:
+  web:
+    external: true

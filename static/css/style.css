@@ -54,14 +54,3 @@
     padding: 3rem 1.5rem;
     background-color: #fafafa;
 }
-
-/* Google button */
-.google-button {
-    background-color: #4285F4;
-    color: white;
-}
-
-.google-button:hover {
-    background-color: #357ae8;
-    color: white;
-}
