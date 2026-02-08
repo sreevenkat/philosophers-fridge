@@ -48,6 +48,10 @@ def get_db():
     finally:
         db.close()
 
+@app.get('/health')
+async def health_check():
+    return {"status": "healthy"}
+
 # ============================================
 # Authentication Routes (Email/Password)
 # ============================================
